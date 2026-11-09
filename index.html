@@ -1,0 +1,2912 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#4F46E5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="AulaFlow Docente" />
+  <title>AulaFlow — Cronómetro Inteligente y Guía de Sesión Docente</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Mammoth.js y JSZip para lectura nativa de documentos Microsoft Word (.docx) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace']
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+      background-color: #F8FAFC;
+      color: #0F172A;
+      overscroll-behavior-y: none;
+    }
+
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Transición fluida de fundido y deslizamiento al cambiar de tarea atómica */
+    @keyframes stepSlideFadeIn {
+      0% {
+        opacity: 0;
+        transform: translateY(14px) scale(0.99);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .step-card-animate {
+      animation: stepSlideFadeIn 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    /* Pulso sutil en rojo coral cuando el tiempo de la subfase se ha excedido */
+    @keyframes coralPulseBar {
+      0%, 100% {
+        background-color: #F43F5E;
+        box-shadow: 0 0 12px rgba(244, 63, 94, 0.6);
+      }
+      50% {
+        background-color: #FB7185;
+        box-shadow: 0 0 4px rgba(244, 63, 94, 0.2);
+      }
+    }
+
+    @keyframes coralPulseRing {
+      0%, 100% {
+        box-shadow: 0 10px 25px -5px rgba(244, 63, 94, 0.22), 0 0 0 2px rgba(244, 63, 94, 0.55);
+      }
+      50% {
+        box-shadow: 0 10px 25px -5px rgba(244, 63, 94, 0.08), 0 0 0 2px rgba(244, 63, 94, 0.15);
+      }
+    }
+
+    .bar-overtime-coral {
+      animation: coralPulseBar 1.4s infinite ease-in-out;
+    }
+
+    .card-overtime-coral {
+      animation: coralPulseRing 1.6s infinite ease-in-out;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #F1F5F9;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #94A3B8;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #64748B;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col antialiased selection:bg-indigo-600 selection:text-white">
+
+  <!-- ========================================================= -->
+  <!-- BARRA SUPERIOR FIJA DE PROGRESO ADAPTATIVA                -->
+  <!-- ========================================================= -->
+  <header class="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-sm">
+    <div class="max-w-3xl mx-auto px-3 sm:px-5 pt-2.5 pb-2 flex flex-col gap-2">
+      <!-- Barra horizontal fija con esquinas redondeadas -->
+      <div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden p-0.5 ring-1 ring-slate-200/70">
+        <div
+          id="globalProgressBar"
+          class="h-full w-0 rounded-full transition-all duration-500 ease-out bg-emerald-500"
+          role="progressbar"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+        ></div>
+      </div>
+
+      <!-- Indicadores de estado, avance, reloj en vivo y botón de audio -->
+      <div class="flex items-center justify-between gap-2 text-xs font-semibold">
+        <div class="flex items-center gap-2 min-w-0">
+          <span id="statusIndicatorDot" class="inline-block w-2.5 h-2.5 rounded-full bg-indigo-600 ring-4 ring-indigo-100 shrink-0 transition-colors"></span>
+          <span id="headerStatusLabel" class="text-slate-700 font-bold truncate">Configuración de Sesión</span>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0 tabular-nums">
+          <span id="headerProgressPct" class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-mono font-bold text-[11px]">
+            0% avance
+          </span>
+          <span id="headerWallClock" class="font-mono font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-lg text-[11px]">
+            --:--:--
+          </span>
+          <button
+            type="button"
+            id="btnToggleAudio"
+            class="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-[11px] transition-colors flex items-center gap-1"
+            title="Activar o silenciar alertas auditivas Web Audio API"
+          >
+            <span id="audioStateLabel">Audio ON</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTENEDOR PRINCIPAL -->
+  <main class="flex-1 w-full max-w-3xl mx-auto pt-20 pb-28 px-3 sm:px-5 flex flex-col gap-5">
+
+    <!-- ========================================================= -->
+    <!-- VISTA 1: CONFIGURACIÓN Y PARSER JERÁRQUICO DELIMITADO     -->
+    <!-- ========================================================= -->
+    <section id="setupView" class="flex flex-col gap-5 py-1">
+
+      <!-- Cabecera visual moderna -->
+      <div class="rounded-2xl bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 text-white p-5 shadow-md">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <span class="inline-block px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-[11px] font-bold uppercase tracking-wider mb-1.5">
+              Ejecución Docente In Situ
+            </span>
+            <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">
+              AulaFlow — Secuencia Didáctica Delimitada y Cronometraje
+            </h1>
+            <p class="text-xs sm:text-sm text-indigo-100 mt-1 font-medium">
+              Aísla exclusivamente la "SECUENCIA DIDÁCTICA" (desde Lineamientos preliminares hasta Trabajo de extensión), ignora metadatos o matrices finales y secuencia solo tareas atómicas.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TARJETA 1: HORARIO OFICIAL Y RECALCULADORA DE HORA DE FIN -->
+      <div class="bg-white rounded-2xl shadow-md border border-slate-200/80 p-4 sm:p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-100">
+          <div>
+            <h2 class="text-sm sm:text-base font-extrabold text-slate-800">
+              1. Horario Planificado y Hora de Término Obligatoria
+            </h2>
+            <p class="text-xs text-slate-500 font-medium">
+              Al pulsar START se calcula el factor de escala para concluir estrictamente a la hora límite.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              id="btnReconcileToWindow"
+              class="hidden text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-xl transition-colors"
+              title="Ajusta proporcionalmente los minutos planificados para que sumen exactamente la ventana oficial"
+            >
+              Reconciliar a 90 min
+            </button>
+            <button
+              type="button"
+              id="btnSyncCurrentWindow"
+              class="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-xl transition-colors"
+            >
+              Sincronizar con hora actual
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="bg-slate-50 rounded-xl p-3 border border-slate-200/70">
+            <label for="plannedStartInput" class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">
+              Hora de Inicio Planificada
+            </label>
+            <input
+              type="time"
+              id="plannedStartInput"
+              value="10:30"
+              class="w-full h-11 px-3 rounded-xl border border-slate-300 text-lg font-mono font-extrabold bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+
+          <div class="bg-slate-50 rounded-xl p-3 border border-slate-200/70">
+            <label for="mandatoryEndInput" class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">
+              Hora de Término Obligatoria
+            </label>
+            <input
+              type="time"
+              id="mandatoryEndInput"
+              value="12:00"
+              class="w-full h-11 px-3 rounded-xl border border-slate-300 text-lg font-mono font-extrabold bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+        </div>
+
+        <!-- Resumen de auditoría matemática del árbol jerárquico -->
+        <div class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
+          <div class="rounded-xl bg-slate-50 border border-slate-200/80 p-2.5">
+            <span class="block text-[10px] font-bold uppercase text-slate-500">Ventana Oficial</span>
+            <span id="previewOfficialMinutes" class="font-mono text-base sm:text-lg font-extrabold text-slate-800">90 min</span>
+          </div>
+          <div class="rounded-xl bg-indigo-50/70 border border-indigo-200/80 p-2.5">
+            <span class="block text-[10px] font-bold uppercase text-indigo-600">Tiempo Neto Atómico</span>
+            <span id="previewPlannedMinutes" class="font-mono text-base sm:text-lg font-extrabold text-indigo-700">90 min</span>
+          </div>
+          <div class="rounded-xl bg-amber-50/80 border border-amber-200/80 p-2.5">
+            <span class="block text-[10px] font-bold uppercase text-amber-700">Minutos Macro Filtrados</span>
+            <span id="previewDiscardedMinutes" class="font-mono text-base sm:text-lg font-extrabold text-amber-700">132 min</span>
+          </div>
+          <div class="rounded-xl bg-emerald-50/70 border border-emerald-200/80 p-2.5">
+            <span class="block text-[10px] font-bold uppercase text-emerald-700">Subfases Atómicas</span>
+            <span id="previewSubphasesCount" class="font-mono text-base sm:text-lg font-extrabold text-emerald-700">12 pasos</span>
+          </div>
+        </div>
+
+        <!-- Desglose reconciliado por Momento Macro (Inicio, Desarrollo, Cierre) -->
+        <div id="momentBreakdownBar" class="mt-3 pt-3 border-t border-slate-100 grid grid-cols-3 gap-2 text-center">
+          <div class="rounded-lg bg-sky-50/80 border border-sky-200/70 px-2 py-1.5">
+            <span class="block text-[10px] font-extrabold uppercase text-sky-700">Inicio (Neto)</span>
+            <span id="breakdownInicioLabel" class="font-mono text-xs sm:text-sm font-extrabold text-sky-900">15 min (5 pasos)</span>
+          </div>
+          <div class="rounded-lg bg-indigo-50/80 border border-indigo-200/70 px-2 py-1.5">
+            <span class="block text-[10px] font-extrabold uppercase text-indigo-700">Desarrollo (Neto)</span>
+            <span id="breakdownDesarrolloLabel" class="font-mono text-xs sm:text-sm font-extrabold text-indigo-900">60 min (5 pasos)</span>
+          </div>
+          <div class="rounded-lg bg-teal-50/80 border border-teal-200/70 px-2 py-1.5">
+            <span class="block text-[10px] font-extrabold uppercase text-teal-700">Cierre (Neto)</span>
+            <span id="breakdownCierreLabel" class="font-mono text-xs sm:text-sm font-extrabold text-teal-900">15 min (2 pasos)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- TARJETA 2: CARGA MULTI-VÍA Y MOTOR DE PARSEO CON DELIMITACIÓN ESTRICTA -->
+      <div class="bg-white rounded-2xl shadow-md border border-slate-200/80 p-4 sm:p-5 flex flex-col gap-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+          <div>
+            <h2 class="text-sm sm:text-base font-extrabold text-slate-800">
+              2. Carga de Documento y Delimitación de "SECUENCIA DIDÁCTICA"
+            </h2>
+            <p class="text-xs text-slate-500 font-medium">
+              Procesa exclusivamente desde el Inicio hasta el Trabajo de extensión del Cierre, descartando matrices, encabezados o resúmenes posteriores.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              id="btnLoadSampleSession"
+              class="text-xs font-bold px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+            >
+              Restaurar Ejemplo Institucional
+            </button>
+            <button
+              type="button"
+              id="btnClearSessionText"
+              class="text-xs font-bold px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 transition-colors"
+            >
+              Limpiar
+            </button>
+          </div>
+        </div>
+
+        <!-- Inputs ocultos para carga de archivos -->
+        <input
+          type="file"
+          id="wordFileInput"
+          accept=".docx,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+          class="hidden"
+        />
+        <input
+          type="file"
+          id="generalFileInput"
+          accept=".docx,.doc,.txt,.md,.json,.csv,.rtf,.html,.htm"
+          class="hidden"
+        />
+
+        <!-- Botones de carga directa -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <button
+            type="button"
+            id="btnUploadWordDirect"
+            class="min-h-[50px] px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm shadow-sm hover:shadow transition-all flex items-center justify-center gap-2"
+          >
+            <span>Subir Word (.docx / .doc)</span>
+          </button>
+
+          <button
+            type="button"
+            id="btnBrowseAnyFile"
+            class="min-h-[50px] px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300/80 font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2"
+          >
+            <span>Explorar Archivos (.txt / .md)</span>
+          </button>
+
+          <button
+            type="button"
+            id="btnPasteClipboard"
+            class="min-h-[50px] px-3.5 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2"
+          >
+            <span>Pegar del Portapapeles</span>
+          </button>
+        </div>
+
+        <!-- Zona Drag & Drop -->
+        <div
+          id="dropZone"
+          class="rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/40 hover:bg-indigo-50/80 p-4 text-center transition-all cursor-pointer"
+        >
+          <p class="text-xs sm:text-sm font-bold text-indigo-900">
+            Arrastra y suelta aquí tu archivo Word (.docx) institucional completo
+          </p>
+          <p class="text-[11px] font-medium text-slate-500 mt-0.5">
+            El delimitador automático recorta encabezados previos y matrices/repeticiones posteriores al Cierre.
+          </p>
+        </div>
+
+        <!-- Estado de archivo procesado -->
+        <div
+          id="fileStatusBox"
+          class="hidden rounded-xl bg-indigo-50 border border-indigo-200 px-3.5 py-2 flex items-center justify-between gap-2"
+        >
+          <span id="loadedFileName" class="text-xs font-bold text-indigo-900 truncate">
+            Documento procesado
+          </span>
+          <span id="fileProcessMethodBadge" class="text-[10px] font-mono font-bold uppercase px-2.5 py-0.5 rounded-full bg-indigo-600 text-white shrink-0">
+            Extractor Activo
+          </span>
+        </div>
+
+        <!-- CONECTOR HÍBRIDO CON IA Y DELIMITADOR DE SECUENCIA DIDÁCTICA -->
+        <div class="rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50/40 border border-indigo-200/80 p-3.5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-0.5 rounded-md bg-indigo-600 text-white text-[10px] font-extrabold uppercase tracking-wider">
+                Delimitador Estricto + IA
+              </span>
+              <span class="text-xs sm:text-sm font-extrabold text-slate-800">
+                Aislamiento de "SECUENCIA DIDÁCTICA" y Exclusión de Metadatos Finales
+              </span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                id="btnToggleAiConfig"
+                class="text-xs font-bold text-indigo-700 hover:text-indigo-900 underline px-2 py-1"
+              >
+                API Key IA
+              </button>
+              <button
+                type="button"
+                id="btnRunAiSemanticParse"
+                class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition-all"
+              >
+                Analizar y Reconciliar con IA
+              </button>
+            </div>
+          </div>
+
+          <p id="aiStatusMessage" class="text-[11px] font-medium text-slate-600 mt-1.5">
+            Delimitación activa: ignora cuadros preliminares y corta automáticamente tras el último paso del Cierre ("Trabajo de extensión"), bloqueando matrices o resúmenes repetidos.
+          </p>
+
+          <div id="aiConfigPanel" class="hidden mt-3 pt-3 border-t border-indigo-200/60 flex flex-col gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+              <div class="sm:col-span-4">
+                <label for="aiProviderSelect" class="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                  Proveedor de Lenguaje
+                </label>
+                <select
+                  id="aiProviderSelect"
+                  class="w-full h-9 px-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-800"
+                >
+                  <option value="gemini">Google Gemini API (gemini-2.5-flash)</option>
+                  <option value="openai">OpenAI Compatible (gpt-4o-mini)</option>
+                </select>
+              </div>
+              <div class="sm:col-span-8">
+                <label for="aiApiKeyInput" class="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                  API Key (opcional, almacenada localmente)
+                </label>
+                <input
+                  type="password"
+                  id="aiApiKeyInput"
+                  placeholder="AIzaSy... o sk-..."
+                  class="w-full h-9 px-3 rounded-xl border border-slate-300 bg-white text-xs font-mono text-slate-800"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Creador rápido manual de tareas atómicas -->
+        <div class="rounded-xl bg-slate-50 border border-slate-200/80 p-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-700">
+              ¿Deseas agregar una subfase manualmente?
+            </span>
+            <button
+              type="button"
+              id="btnToggleManualForm"
+              class="text-xs font-bold px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
+            >
+              Abrir Creador Rápido
+            </button>
+          </div>
+
+          <div id="manualStepForm" class="hidden mt-3 pt-3 border-t border-slate-200 flex flex-col gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+              <div class="sm:col-span-3">
+                <label for="manualMomentSelect" class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Momento</label>
+                <select
+                  id="manualMomentSelect"
+                  class="w-full h-9 px-2 rounded-lg border border-slate-300 bg-white font-bold text-xs"
+                >
+                  <option value="INICIO">INICIO</option>
+                  <option value="DESARROLLO">DESARROLLO</option>
+                  <option value="CIERRE">CIERRE</option>
+                </select>
+              </div>
+              <div class="sm:col-span-6">
+                <label for="manualSubphaseInput" class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Título (puede incluir paréntesis)</label>
+                <input
+                  type="text"
+                  id="manualSubphaseInput"
+                  placeholder="Ej. Problematización (Conflicto cognitivo)"
+                  class="w-full h-9 px-2.5 rounded-lg border border-slate-300 bg-white font-semibold text-xs"
+                />
+              </div>
+              <div class="sm:col-span-3">
+                <label for="manualMinutesInput" class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Minutos</label>
+                <input
+                  type="number"
+                  id="manualMinutesInput"
+                  min="1"
+                  max="240"
+                  value="5"
+                  class="w-full h-9 px-2.5 rounded-lg border border-slate-300 bg-white font-mono font-bold text-xs"
+                />
+              </div>
+            </div>
+            <div>
+              <label for="manualDescInput" class="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                Instrucciones Pedagógicas
+              </label>
+              <textarea
+                id="manualDescInput"
+                rows="2"
+                placeholder="Qué preguntas realizar, qué estrategia aplicar o qué recurso entregar..."
+                class="w-full p-2 rounded-lg border border-slate-300 bg-white font-medium text-xs"
+              ></textarea>
+            </div>
+            <button
+              type="button"
+              id="btnAddManualStep"
+              class="self-end px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs"
+            >
+              Añadir Tarea Atómica
+            </button>
+          </div>
+        </div>
+
+        <!-- Área de texto editable -->
+        <div>
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+            <label for="sessionRawTextarea" class="text-xs font-bold text-slate-700 uppercase tracking-wider">
+              Contenido del Documento de Sesión (Con Metadatos y Secuencia Didáctica)
+            </label>
+            <div class="flex items-center gap-1.5">
+              <span id="scopeDelimitedBadge" class="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                Secuencia Didáctica aislada
+              </span>
+              <span id="hierarchyReconcileBadge" class="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                Árbol reconciliado (90 min)
+              </span>
+            </div>
+          </div>
+          <textarea
+            id="sessionRawTextarea"
+            rows="10"
+            placeholder="Pega o sube tu sesión de aprendizaje completa aquí..."
+            class="w-full p-3.5 rounded-xl border border-slate-300 font-mono text-xs sm:text-sm font-medium bg-slate-50/60 text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed"
+          ></textarea>
+        </div>
+
+        <!-- AUDITORÍA DE DELIMITACIÓN, CONTENEDORES FILTRADOS Y TAREAS ATÓMICAS -->
+        <div class="pt-2 border-t border-slate-100 flex flex-col gap-3">
+
+          <!-- 0. Resumen de Delimitación de SECUENCIA DIDÁCTICA y Metadatos Excluidos -->
+          <div
+            id="scopeExclusionPanel"
+            class="hidden rounded-2xl bg-slate-100/90 border border-slate-300/80 p-3 text-xs text-slate-700 flex flex-col gap-1"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="font-extrabold uppercase tracking-wider text-slate-800">
+                Delimitación Estricta de "SECUENCIA DIDÁCTICA"
+              </span>
+              <span id="excludedLinesCountBadge" class="font-mono text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-800 text-white">
+                Metadatos excluidos
+              </span>
+            </div>
+            <p id="scopeExclusionDetails" class="text-[11px] font-medium text-slate-600"></p>
+          </div>
+
+          <!-- 1. Bloques contenedores descartados como tareas independientes -->
+          <div
+            id="discardedContainersPanel"
+            class="hidden rounded-2xl bg-amber-50/90 border border-amber-200/90 p-3.5"
+          >
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <span class="text-xs font-extrabold uppercase tracking-wider text-amber-900">
+                Contenedores Macro Filtrados (Evita duplicar el tiempo total)
+              </span>
+              <span id="discardedContainersCountBadge" class="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-900">
+                0 contenedores
+              </span>
+            </div>
+            <div id="discardedContainersList" class="flex flex-col gap-1.5 text-xs text-amber-900"></div>
+          </div>
+
+          <!-- 2. Secuencia lineal única de tareas atómicas ejecutables -->
+          <div>
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+              <h3 class="text-xs sm:text-sm font-extrabold text-slate-800">
+                Secuencia Lineal Estricta de Tareas Atómicas (<span id="parsedCountLabel">0</span> subfases ejecutables)
+              </h3>
+              <span id="parserAlertBadge" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                Listo para iniciar
+              </span>
+            </div>
+
+            <div id="parsedPreviewList" class="flex flex-col gap-2.5 max-h-80 overflow-y-auto pr-1">
+              <!-- Renderizado dinámico por JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTÓN PRINCIPAL DE INICIO ("START") -->
+      <div class="pt-1">
+        <button
+          type="button"
+          id="btnStartSession"
+          class="w-full py-4 sm:py-5 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-700 hover:to-blue-700 text-white text-base sm:text-lg font-extrabold tracking-wide shadow-lg shadow-indigo-500/25 active:scale-[0.99] transition-all"
+        >
+          START — INICIAR SECUENCIA ATÓMICA Y RECALCULAR TIEMPOS
+        </button>
+        <p class="text-xs font-medium text-center text-slate-500 mt-2">
+          Ejecuta únicamente las tareas atómicas finales en orden estricto y ajusta sus duraciones para concluir a la hora límite.
+        </p>
+      </div>
+    </section>
+
+    <!-- ========================================================= -->
+    <!-- VISTA 2: EJECUCIÓN DOCENTE EN AULA                        -->
+    <!-- ========================================================= -->
+    <section id="liveView" class="hidden flex-col gap-4 py-1">
+
+      <!-- BANDA DE SINCRONIZACIÓN HORARIA Y CRONÓMETRO GLOBAL -->
+      <div class="bg-white rounded-2xl shadow-md border border-slate-200/80 p-3.5 sm:p-4">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center tabular-nums">
+          <div class="rounded-xl bg-slate-50 border border-slate-200/70 p-2.5">
+            <span class="block text-[10px] font-bold uppercase text-slate-500">Inicio Plan / Real</span>
+            <span id="liveStartComparison" class="font-mono text-xs sm:text-sm font-extrabold text-slate-800">10:30 / 10:35</span>
+          </div>
+          <div class="rounded-xl bg-slate-50 border border-slate-200/70 p-2.5">
+            <span class="block text-[10px] font-bold uppercase text-slate-500">Meta de Cierre</span>
+            <span id="liveMandatoryEnd" class="font-mono text-xs sm:text-sm font-extrabold text-slate-800">12:00</span>
+          </div>
+          <div class="rounded-xl bg-indigo-50/70 border border-indigo-200/70 p-2.5">
+            <span class="block text-[10px] font-bold uppercase text-indigo-600">Escala Matemática</span>
+            <span id="liveScaleFactor" class="font-mono text-xs sm:text-sm font-extrabold text-indigo-700">100.0%</span>
+          </div>
+          <div class="rounded-xl bg-slate-900 text-white p-2.5 shadow-sm">
+            <span class="block text-[10px] font-bold uppercase text-slate-300">Restante Global</span>
+            <span id="liveGlobalCountdown" class="font-mono text-sm sm:text-base font-extrabold text-emerald-400">01:30:00</span>
+          </div>
+        </div>
+        <p id="liveRecalcNotice" class="text-xs font-semibold text-slate-600 mt-2.5 pt-2 border-t border-slate-100">
+          Sincronización activa con la hora límite de cierre.
+        </p>
+      </div>
+
+      <!-- BANNER DE EXCESO DE TIEMPO EN LA SUBFASE ACTUAL -->
+      <div
+        id="overtimeBanner"
+        class="hidden rounded-2xl bg-rose-500 text-white px-4 py-3 shadow-md flex items-center justify-between gap-3"
+        role="alert"
+      >
+        <div class="text-xs sm:text-sm font-bold">
+          Tiempo de tarea agotado — Pulsa "Siguiente Paso" para reajustar las tareas restantes hacia la hora de cierre.
+        </div>
+        <span id="overtimeElapsedBadge" class="font-mono text-xs sm:text-sm font-extrabold px-2.5 py-1 rounded-xl bg-white text-rose-600 tabular-nums shrink-0">
+          +00:00
+        </span>
+      </div>
+
+      <!-- TARJETA CENTRAL GRANDE DE LA TAREA ATÓMICA ACTUAL -->
+      <article
+        id="currentStepCard"
+        class="bg-white rounded-2xl shadow-lg border border-slate-200/90 p-5 sm:p-6 flex flex-col gap-5 transition-all step-card-animate"
+      >
+        <!-- Ruta jerárquica (Momento Macro -> Bloque Contenedor Padre -> Estado) -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-3.5 border-b border-slate-100">
+          <div class="flex flex-wrap items-center gap-2">
+            <span
+              id="currentMomentBadge"
+              class="px-3 py-1 rounded-xl bg-indigo-600 text-white text-xs font-extrabold uppercase tracking-wider shadow-sm"
+            >
+              INICIO
+            </span>
+            <span
+              id="currentMacroGroupBadge"
+              class="hidden px-3 py-1 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold"
+            >
+              Procesos de Aprendizaje
+            </span>
+            <span
+              id="currentStepStateBadge"
+              class="px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold"
+            >
+              En tiempo
+            </span>
+          </div>
+          <span id="currentStepIndexLabel" class="font-mono text-xs sm:text-sm font-extrabold text-slate-500">
+            Tarea 1 de 12
+          </span>
+        </div>
+
+        <!-- Título, Subtítulo/Aclaración y Cronómetro Regresivo de la Subfase -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center pb-5 border-b border-slate-100">
+          <div class="md:col-span-7 flex flex-col gap-1.5">
+            <span class="text-xs font-bold uppercase tracking-wider text-indigo-600">
+              Subfase Atómica en Ejecución
+            </span>
+            <h2
+              id="currentSubphaseTitle"
+              class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight break-words"
+            >
+              Lineamientos Preliminares
+            </h2>
+            <p
+              id="currentSubphaseSubtitle"
+              class="text-xs sm:text-sm font-semibold text-slate-500"
+            >
+              Secuencia de Inicio
+            </p>
+            <div class="mt-2 flex flex-wrap items-center gap-2 text-xs font-mono font-bold">
+              <span id="currentPlannedDurationLabel" class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">
+                Plan: 02:00 min
+              </span>
+              <span id="currentAdjustedDurationLabel" class="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                Ajustado: 02:00 min
+              </span>
+            </div>
+          </div>
+
+          <div
+            id="currentTimerBox"
+            class="md:col-span-5 rounded-2xl bg-slate-50 border border-slate-200/90 p-4 text-center shadow-inner transition-colors"
+          >
+            <span class="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Tiempo Restante de la Subfase
+            </span>
+            <div
+              id="currentBlockCountdown"
+              class="font-mono text-5xl sm:text-6xl font-extrabold tracking-tight tabular-nums leading-none mt-1.5 text-emerald-600 transition-colors"
+            >
+              02:00
+            </div>
+            <div class="w-full h-2.5 bg-slate-200/80 rounded-full mt-3.5 overflow-hidden">
+              <div
+                id="currentBlockProgressBar"
+                class="h-full w-full rounded-full bg-emerald-500 transition-all duration-300"
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Instrucciones pedagógicas detalladas -->
+        <div class="bg-slate-50/80 rounded-2xl p-4 sm:p-5 border border-slate-200/70">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-xs font-extrabold uppercase tracking-wider text-indigo-700">
+              Instrucciones Pedagógicas Exactas
+            </h3>
+          </div>
+          <div
+            id="currentStepDescription"
+            class="text-base sm:text-xl font-semibold leading-relaxed text-slate-800 whitespace-pre-line"
+          >
+            Descripción detallada de la tarea actual...
+          </div>
+        </div>
+
+        <!-- Siguiente tarea atómica -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs sm:text-sm">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <span class="font-bold text-slate-400 uppercase">Siguiente Tarea:</span>
+            <span id="nextStepPreviewTitle" class="font-extrabold text-slate-700 truncate">Motivación</span>
+          </div>
+          <span id="nextStepPreviewDuration" class="font-mono font-bold text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 shrink-0">
+            Ajustado: 04:00
+          </span>
+        </div>
+      </article>
+
+      <!-- SECUENCIA LINEAL COMPLETA EN EJECUCIÓN -->
+      <div class="bg-white rounded-2xl shadow-md border border-slate-200/80 p-4 sm:p-5">
+        <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+          <h3 class="text-xs sm:text-sm font-extrabold text-slate-800 uppercase tracking-wider">
+            Secuencia Lineal de Tareas Atómicas
+          </h3>
+          <button
+            type="button"
+            id="btnEditSessionConfig"
+            class="text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-xl transition-colors"
+          >
+            Volver a Configuración
+          </button>
+        </div>
+        <div id="liveStepsTimeline" class="flex flex-col gap-2">
+          <!-- Renderizado dinámico por JS -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ========================================================= -->
+  <!-- BARRA TÁCTIL INFERIOR ACCESIBLE CON EL PULGAR             -->
+  <!-- ========================================================= -->
+  <footer
+    id="thumbControlBar"
+    class="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-lg px-3 py-2.5 hidden"
+  >
+    <div class="max-w-3xl mx-auto grid grid-cols-12 gap-2.5">
+      <button
+        type="button"
+        id="btnResetSession"
+        class="col-span-3 min-h-[54px] rounded-2xl bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200/90 font-extrabold text-xs sm:text-sm tracking-wide active:scale-[0.98] transition-all"
+      >
+        Reiniciar
+      </button>
+
+      <button
+        type="button"
+        id="btnPauseResume"
+        class="col-span-4 min-h-[54px] rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-sm active:scale-[0.98] transition-all"
+      >
+        Pausar
+      </button>
+
+      <button
+        type="button"
+        id="btnNextStep"
+        class="col-span-5 min-h-[54px] rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-extrabold text-sm sm:text-base tracking-wide shadow-md shadow-indigo-500/25 active:scale-[0.98] transition-all"
+      >
+        Siguiente Paso
+      </button>
+    </div>
+  </footer>
+
+  <!-- MODAL DE CONFIRMACIÓN -->
+  <div
+    id="modalOverlay"
+    class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center p-4"
+    role="dialog"
+    aria-modal="true"
+  >
+    <div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-5 flex flex-col gap-4">
+      <div class="pb-2 border-b border-slate-100">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-600">Control de Aula</span>
+        <h3 id="modalTitle" class="text-lg font-extrabold text-slate-900 mt-0.5">Confirmar Acción</h3>
+      </div>
+      <p id="modalMessage" class="text-sm font-medium leading-relaxed text-slate-600"></p>
+      <div class="grid grid-cols-2 gap-3 pt-1">
+        <button
+          type="button"
+          id="modalCancelBtn"
+          class="min-h-[46px] rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm transition-colors"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          id="modalConfirmBtn"
+          class="min-h-[46px] rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm shadow-sm transition-colors"
+        >
+          Confirmar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- MOTOR DE DELIMITACIÓN ESTRICTA, PARSER JERÁRQUICO Y RELOJ -->
+  <!-- ========================================================= -->
+  <script>
+    (function () {
+      'use strict';
+
+      // -----------------------------------------------------------
+      // 1. SESIÓN INSTITUCIONAL MODELO CON METADATOS PRELIMINARES,
+      //    SECCIÓN "SECUENCIA DIDÁCTICA" (DESDE LINEAMIENTOS PRELIMINARES
+      //    HASTA TRABAJO DE EXTENSIÓN) Y METADATOS/MATRICES FINALES
+      //    QUE SON EXCLUIDOS CATEGÓRICAMENTE.
+      // -----------------------------------------------------------
+      const DEFAULT_SESSION_TEXT = `DATOS INFORMATIVOS DE LA SESIÓN
+Institución Educativa: Politécnico Nacional
+Área Curricular: Ciencia, Tecnología y Ambiente (90 min)
+Docente Responsable: Equipo Docente
+Propósito General: Sustentar con evidencia experimental la calidad del agua.
+
+SECUENCIA DIDÁCTICA
+
+I. INICIO (15 min)
+- Lineamientos preliminares (Saludo y acuerdos de convivencia) (2 min): Dar la bienvenida a los estudiantes, verificar el orden del aula y recordar las normas de seguridad en equipo.
+- Motivación (Despertar el interés) (4 min): Presentar el caso interactivo sobre calidad del agua en la cuenca local y formular dos preguntas iniciales.
+- Saberes Previos (Recuperación de conocimientos previos) (3 min): Lluvia de ideas guiada en pizarra clasificando las intervenciones de los estudiantes en factores físicos y químicos.
+- Problematización (Conflicto cognitivo) (3 min): Plantear la paradoja experimental: "¿Por qué dos muestras de agua cristalina pueden tener niveles opuestos de toxicidad?".
+- Propósito y Organización (Criterios de evaluación) (3 min): Comunicar el propósito de aprendizaje de la sesión y la ruta de trabajo colaborativo.
+
+II. DESARROLLO (60 min)
+- Procesos de Aprendizaje (Gestión y acompañamiento) (42 min): Secuencia central de construcción de conocimientos en equipos colaborativos.
+  * Recepción de la Información (Lectura analítica de fuentes) (8 min): Entrega de fichas técnicas de muestreo real por equipos de 4 integrantes y lectura de parámetros.
+  * Observación Selectiva (Identificación de variables críticas) (7 min): Subrayar y contrastar en las tablas los valores de pH, turbidez y conductividad que superan los estándares.
+  * Análisis y Construcción de Explicaciones (Trabajo cooperativo) (15 min): Elaborar en equipo la matriz causa-efecto vinculando los agentes contaminantes con el impacto ambiental.
+  * Sistematización de Hallazgos (Conclusiones basadas en evidencia) (12 min): Redactar dos conclusiones cuantitativas consensuadas listas para el plenario.
+- Transferencia Guiada (Aplicación a un nuevo contexto local) (18 min): Un representante por equipo expone su propuesta de mitigación viable para la comunidad escolar.
+
+III. CIERRE (15 min)
+- Evaluación y Metacognición (Reflexión sobre el aprendizaje) (10 min): Resolver el ticket de salida individual y dialogar sobre: ¿Qué evidencia resultó clave hoy?, ¿Qué estrategia nos ayudó a superar dificultades?
+- Trabajo de extensión (Actividad de investigación domiciliaria) (5 min): Indicar a los estudiantes que registren en su cuaderno de campo dos fuentes de agua de su localidad y propongan un protocolo básico de cuidado.
+
+MATRIZ DE EVALUACIÓN Y METADATOS FINALES
+Cuadro de Áreas Curriculares: Ciencia y Tecnología (90 min)
+Criterios de Evaluación e Instrumento: Lista de cotejo (15 min)
+Resumen Institucional Repetido - Inicio (15 min) / Desarrollo (60 min) / Cierre (15 min)`;
+
+      // -----------------------------------------------------------
+      // 2. ESTADO REACTIVO DE LA APLICACIÓN
+      // -----------------------------------------------------------
+      const state = {
+        parsedSteps: [],             // Únicamente las subfases atómicas dentro de SECUENCIA DIDÁCTICA
+        discardedContainers: [],     // Contenedores macro descartados (Momentos y Bloques Contenedores)
+        declaredMomentTotals: {},    // { INICIO: 15, DESARROLLO: 60, CIERRE: 15 }
+        scopeAudit: {
+          foundExplicitHeader: false,
+          ignoredPreLines: 0,
+          ignoredPostLines: 0,
+          firstStepTitle: '',
+          lastStepTitle: '',
+          cutReason: ''
+        },
+        plannedStartStr: '10:30',
+        mandatoryEndStr: '12:00',
+        isRunning: false,
+        isPaused: false,
+        currentStepIndex: 0,
+        realStartTimeMs: null,
+        mandatoryEndTimeMs: null,
+        stepStartTimeMs: null,
+        pausedAccumulatedMs: 0,
+        pauseStartedAtMs: null,
+        initialScaleFactor: 1.0,
+        currentScaleFactor: 1.0,
+        initialDelaySeconds: 0,
+        timerIntervalId: null,
+        audioEnabled: true,
+        overtimeAlertFiredForStep: false
+      };
+
+      // -----------------------------------------------------------
+      // 3. REFERENCIAS AL DOM
+      // -----------------------------------------------------------
+      const dom = {
+        globalProgressBar: document.getElementById('globalProgressBar'),
+        statusIndicatorDot: document.getElementById('statusIndicatorDot'),
+        headerStatusLabel: document.getElementById('headerStatusLabel'),
+        headerProgressPct: document.getElementById('headerProgressPct'),
+        headerWallClock: document.getElementById('headerWallClock'),
+        btnToggleAudio: document.getElementById('btnToggleAudio'),
+        audioStateLabel: document.getElementById('audioStateLabel'),
+
+        setupView: document.getElementById('setupView'),
+        liveView: document.getElementById('liveView'),
+        thumbControlBar: document.getElementById('thumbControlBar'),
+
+        plannedStartInput: document.getElementById('plannedStartInput'),
+        mandatoryEndInput: document.getElementById('mandatoryEndInput'),
+        btnSyncCurrentWindow: document.getElementById('btnSyncCurrentWindow'),
+        btnReconcileToWindow: document.getElementById('btnReconcileToWindow'),
+
+        previewOfficialMinutes: document.getElementById('previewOfficialMinutes'),
+        previewPlannedMinutes: document.getElementById('previewPlannedMinutes'),
+        previewDiscardedMinutes: document.getElementById('previewDiscardedMinutes'),
+        previewSubphasesCount: document.getElementById('previewSubphasesCount'),
+
+        breakdownInicioLabel: document.getElementById('breakdownInicioLabel'),
+        breakdownDesarrolloLabel: document.getElementById('breakdownDesarrolloLabel'),
+        breakdownCierreLabel: document.getElementById('breakdownCierreLabel'),
+
+        wordFileInput: document.getElementById('wordFileInput'),
+        generalFileInput: document.getElementById('generalFileInput'),
+        btnUploadWordDirect: document.getElementById('btnUploadWordDirect'),
+        btnBrowseAnyFile: document.getElementById('btnBrowseAnyFile'),
+        btnPasteClipboard: document.getElementById('btnPasteClipboard'),
+
+        dropZone: document.getElementById('dropZone'),
+        fileStatusBox: document.getElementById('fileStatusBox'),
+        loadedFileName: document.getElementById('loadedFileName'),
+        fileProcessMethodBadge: document.getElementById('fileProcessMethodBadge'),
+
+        btnToggleAiConfig: document.getElementById('btnToggleAiConfig'),
+        btnRunAiSemanticParse: document.getElementById('btnRunAiSemanticParse'),
+        aiStatusMessage: document.getElementById('aiStatusMessage'),
+        aiConfigPanel: document.getElementById('aiConfigPanel'),
+        aiProviderSelect: document.getElementById('aiProviderSelect'),
+        aiApiKeyInput: document.getElementById('aiApiKeyInput'),
+
+        btnToggleManualForm: document.getElementById('btnToggleManualForm'),
+        manualStepForm: document.getElementById('manualStepForm'),
+        manualMomentSelect: document.getElementById('manualMomentSelect'),
+        manualSubphaseInput: document.getElementById('manualSubphaseInput'),
+        manualMinutesInput: document.getElementById('manualMinutesInput'),
+        manualDescInput: document.getElementById('manualDescInput'),
+        btnAddManualStep: document.getElementById('btnAddManualStep'),
+
+        btnLoadSampleSession: document.getElementById('btnLoadSampleSession'),
+        btnClearSessionText: document.getElementById('btnClearSessionText'),
+        sessionRawTextarea: document.getElementById('sessionRawTextarea'),
+        scopeDelimitedBadge: document.getElementById('scopeDelimitedBadge'),
+        hierarchyReconcileBadge: document.getElementById('hierarchyReconcileBadge'),
+        scopeExclusionPanel: document.getElementById('scopeExclusionPanel'),
+        excludedLinesCountBadge: document.getElementById('excludedLinesCountBadge'),
+        scopeExclusionDetails: document.getElementById('scopeExclusionDetails'),
+        discardedContainersPanel: document.getElementById('discardedContainersPanel'),
+        discardedContainersCountBadge: document.getElementById('discardedContainersCountBadge'),
+        discardedContainersList: document.getElementById('discardedContainersList'),
+        parsedCountLabel: document.getElementById('parsedCountLabel'),
+        parserAlertBadge: document.getElementById('parserAlertBadge'),
+        parsedPreviewList: document.getElementById('parsedPreviewList'),
+        btnStartSession: document.getElementById('btnStartSession'),
+
+        liveStartComparison: document.getElementById('liveStartComparison'),
+        liveMandatoryEnd: document.getElementById('liveMandatoryEnd'),
+        liveScaleFactor: document.getElementById('liveScaleFactor'),
+        liveGlobalCountdown: document.getElementById('liveGlobalCountdown'),
+        liveRecalcNotice: document.getElementById('liveRecalcNotice'),
+
+        overtimeBanner: document.getElementById('overtimeBanner'),
+        overtimeElapsedBadge: document.getElementById('overtimeElapsedBadge'),
+
+        currentStepCard: document.getElementById('currentStepCard'),
+        currentMomentBadge: document.getElementById('currentMomentBadge'),
+        currentMacroGroupBadge: document.getElementById('currentMacroGroupBadge'),
+        currentStepStateBadge: document.getElementById('currentStepStateBadge'),
+        currentStepIndexLabel: document.getElementById('currentStepIndexLabel'),
+        currentSubphaseTitle: document.getElementById('currentSubphaseTitle'),
+        currentSubphaseSubtitle: document.getElementById('currentSubphaseSubtitle'),
+        currentPlannedDurationLabel: document.getElementById('currentPlannedDurationLabel'),
+        currentAdjustedDurationLabel: document.getElementById('currentAdjustedDurationLabel'),
+        currentTimerBox: document.getElementById('currentTimerBox'),
+        currentBlockCountdown: document.getElementById('currentBlockCountdown'),
+        currentBlockProgressBar: document.getElementById('currentBlockProgressBar'),
+        currentStepDescription: document.getElementById('currentStepDescription'),
+        nextStepPreviewTitle: document.getElementById('nextStepPreviewTitle'),
+        nextStepPreviewDuration: document.getElementById('nextStepPreviewDuration'),
+
+        liveStepsTimeline: document.getElementById('liveStepsTimeline'),
+        btnEditSessionConfig: document.getElementById('btnEditSessionConfig'),
+
+        btnResetSession: document.getElementById('btnResetSession'),
+        btnPauseResume: document.getElementById('btnPauseResume'),
+        btnNextStep: document.getElementById('btnNextStep'),
+
+        modalOverlay: document.getElementById('modalOverlay'),
+        modalTitle: document.getElementById('modalTitle'),
+        modalMessage: document.getElementById('modalMessage'),
+        modalCancelBtn: document.getElementById('modalCancelBtn'),
+        modalConfirmBtn: document.getElementById('modalConfirmBtn')
+      };
+
+      // -----------------------------------------------------------
+      // 4. ALERTAS AUDITIVAS (WEB AUDIO API NATIVA)
+      // -----------------------------------------------------------
+      let audioCtx = null;
+
+      function getAudioContext() {
+        if (!state.audioEnabled) return null;
+        if (!audioCtx) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) {
+            audioCtx = new AudioContextClass();
+          }
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+        }
+        return audioCtx;
+      }
+
+      function playSynthesizedTone(freqHz, startTimeOffsetSec, durationSec, type = 'sine', peakGain = 0.14) {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const startAt = ctx.currentTime + startTimeOffsetSec;
+        const stopAt = startAt + durationSec;
+
+        osc.type = type;
+        osc.frequency.setValueAtTime(freqHz, startAt);
+
+        gain.gain.setValueAtTime(0.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(peakGain, startAt + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, stopAt);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(startAt);
+        osc.stop(stopAt + 0.01);
+      }
+
+      function playStartActivationSound() {
+        playSynthesizedTone(523.25, 0.0, 0.14, 'triangle', 0.15);
+        playSynthesizedTone(659.25, 0.10, 0.22, 'sine', 0.16);
+      }
+
+      function playStepTransitionSound() {
+        playSynthesizedTone(587.33, 0.0, 0.13, 'sine', 0.12);
+        playSynthesizedTone(880.00, 0.12, 0.20, 'sine', 0.13);
+      }
+
+      function playSubphaseExpiredSound() {
+        playSynthesizedTone(440.00, 0.0, 0.16, 'triangle', 0.16);
+        playSynthesizedTone(440.00, 0.20, 0.16, 'triangle', 0.16);
+        playSynthesizedTone(349.23, 0.40, 0.28, 'sine', 0.18);
+      }
+
+      // -----------------------------------------------------------
+      // 5. DELIMITADOR ESTRICTO DE "SECUENCIA DIDÁCTICA" Y EXCLUSIÓN
+      //    DE METADATOS PRELIMINARES Y FINALES
+      // -----------------------------------------------------------
+      /**
+       * Detecta si una línea corresponde a un encabezado de sección de metadatos,
+       * matrices de evaluación, cuadros curriculares o anexos que NO pertenecen
+       * a la ejecución de la Secuencia Didáctica.
+       */
+      function isPostOrMetadataSectionHeader(cleanLine) {
+        const upper = cleanLine.replace(/[*_#:\-–—]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+        const postSectionPatterns = [
+          /^(?:[IVX]+\s+|\d+\s+)?MATRIZ\s+DE\s+EVALUACI[OÓ]N/,
+          /^(?:[IVX]+\s+|\d+\s+)?EVALUACI[OÓ]N\s+DE\s+LOS\s+APRENDIZAJES/,
+          /^(?:[IVX]+\s+|\d+\s+)?CRITERIOS\s+DE\s+EVALUACI[OÓ]N/,
+          /^(?:[IVX]+\s+|\d+\s+)?INSTRUMENTOS?\s+DE\s+EVALUACI[OÓ]N/,
+          /^(?:[IVX]+\s+|\d+\s+)?CUADRO\s+DE\s+[AÁ]REAS?\s+CURRICULAR/,
+          /^(?:[IVX]+\s+|\d+\s+)?PROP[OÓ]SITOS?\s+DE\s+APRENDIZAJE/,
+          /^(?:[IVX]+\s+|\d+\s+)?DATOS\s+INFORMATIVOS/,
+          /^(?:[IVX]+\s+|\d+\s+)?DATOS\s+GENERALES/,
+          /^(?:[IVX]+\s+|\d+\s+)?INFORMACI[OÓ]N\s+GENERAL/,
+          /^(?:[IVX]+\s+|\d+\s+)?ENFOQUES?\s+TRANSVERSALES/,
+          /^(?:[IVX]+\s+|\d+\s+)?COMPETENCIAS?\s+Y\s+CAPACIDADES/,
+          /^(?:[IVX]+\s+|\d+\s+)?REFLEXIONES?\s+SOBRE\s+EL\s+APRENDIZAJE/,
+          /^(?:[IVX]+\s+|\d+\s+)?BIBLIOGRAF[IÍ]A/,
+          /^(?:[IVX]+\s+|\d+\s+)?REFERENCIAS\s+BIBLIOGR[AÁ]FICAS/,
+          /^(?:[IVX]+\s+|\d+\s+)?ANEXOS?$/,
+          /^(?:[IVX]+\s+|\d+\s+)?OBSERVACIONES\s+FINALES/,
+          /^(?:[IVX]+\s+|\d+\s+)?FIRMA\s+DEL\s+DOCENTE/,
+          /^RESUMEN\s+INSTITUCIONAL/
+        ];
+        return postSectionPatterns.some((rx) => rx.test(upper));
+      }
+
+      /**
+       * Detecta si una línea individual es un metadato administrativo (ej. "Área Curricular: ...",
+       * "Duración total: 90 min", "Institución Educativa: ...", "Grado y Sección: ...")
+       * para que jamás sea interpretada como una subfase ejecutable.
+       */
+      function isAdministrativeMetadataLine(cleanLine) {
+        const upper = cleanLine.trim().toUpperCase();
+        return (
+          /^(?:INSTITUCI[OÓ]N\s+EDUCATIVA|I\.?E\.?|DOCENTE(?:\s+RESPONSABLE)?|[AÁ]REA(?:\s+CURRICULAR)?|CUADRO\s+DE\s+[AÁ]REAS|GRADO(?:\s+Y\s+SECCI[OÓ]N)?|CICLO|NIVEL|UNIDAD(?:\s+DID[AÁ]CTICA)?|BIMESTRE|TRIMESTRE|FECHA|DURACI[OÓ]N(?:\s+TOTAL)?|TIEMPO\s+TOTAL|HORAS\s+PEDAG[OÓ]GICAS|COMPETENCIA|CAPACIDAD(?:ES)?|DESEMPE[ÑN]O(?:S)?|EVIDENCIA\s+DE\s+APRENDIZAJE|INSTRUMENTO\s+DE\s+EVALUACI[OÓ]N|CRITERIOS\s+DE\s+EVALUACI[OÓ]N|RESUMEN\s+INSTITUCIONAL)\s*[:\-–—]/i.test(upper)
+        );
+      }
+
+      /**
+       * Aísla estrictamente las líneas pertenecientes a la sección "SECUENCIA DIDÁCTICA":
+       * - Comienza en el encabezado "SECUENCIA DIDÁCTICA" (o en "Lineamientos preliminares" / primer "INICIO").
+       * - Termina inmediatamente después del paso "Trabajo de extensión" (y sus líneas descriptivas) en CIERRE,
+       *   o en cuanto aparece cualquier encabezado de Matriz de Evaluación, Metadatos o repetición de Momentos
+       *   tras haber entrado al Cierre.
+       */
+      function isolateDidacticSequenceLines(allLines) {
+        let startIndex = 0;
+        let foundExplicitHeader = false;
+
+        // 1. Buscar el inicio explícito de "SECUENCIA DIDÁCTICA"
+        for (let i = 0; i < allLines.length; i++) {
+          const clean = allLines[i].trim();
+          if (/^(?:#+\s*|\*\*|__|[IVX]+[\.\)]\s*|\d+[\.\)]\s*)?SECUENCIA\s+DID[AÁ]CTICA\b/i.test(clean)) {
+            startIndex = i + 1;
+            foundExplicitHeader = true;
+            break;
+          }
+        }
+
+        // Si no hay título explícito "SECUENCIA DIDÁCTICA", buscar la primera ocurrencia de "Lineamientos preliminares" o el encabezado "INICIO"
+        if (!foundExplicitHeader) {
+          for (let i = 0; i < allLines.length; i++) {
+            const clean = allLines[i].trim();
+            if (
+              /LINEAMIENTOS\s+PRELIMINARES/i.test(clean) ||
+              /^(?:#+\s*|\*\*|__|[IVX]+[\.\)]\s*|\d+[\.\)]\s*)?(?:MOMENTO\s*(?:\d+|[IVX]+|DE)?\s*[:\-–—]?\s*)?INICIO(?:\s*[\(\[].*[\)\]])?\s*:?$/i.test(clean)
+            ) {
+              startIndex = i;
+              break;
+            }
+          }
+        }
+
+        // 2. Recorrer desde `startIndex` hasta el final del Cierre ("Trabajo de extensión" o corte por metadatos posteriores)
+        const isolatedLines = [];
+        let seenCierreMoment = false;
+        let inTrabajoDeExtension = false;
+        let cutAtLineIndex = allLines.length;
+        let cutReason = 'Fin del documento';
+
+        const momentHeaderCheck = /^(?:\s*(?:#+\s*|\*\*|__|[-*•+]\s*|[IVX]+[\.\)]\s*|\d+[\.\)]\s*|\[)?)\s*(?:MOMENTO\s*(?:\d+|[IVX]+|DE)?\s*[:\-–—]?\s*)?(INICIO|INTRODUCCI[OÓ]N|APERTURA|DESARROLLO|PROCESO|CONSTRUCCI[OÓ]N|CIERRE|CONCLUSI[OÓ]N|SALIDA|EVALUACI[OÓ]N\s+Y\s+CIERRE)(?:\s*\(([^)\d]+)\))?(?:\s*[\(\[]\s*(\d+(?:[.,]\d+)?)\s*(?:min(?:utos?)?|mins?\.?|m\.?|'|’’|hrs?|horas?)?\s*[\)\]])?\s*(?:\*\*|__|\]|:|-|–|—)?\s*$/i;
+
+        for (let i = startIndex; i < allLines.length; i++) {
+          const rawLine = allLines[i];
+          const clean = rawLine.trim();
+          if (!clean) {
+            isolatedLines.push(rawLine);
+            continue;
+          }
+
+          // Si aparece un nuevo encabezado repetido de "SECUENCIA DIDÁCTICA" después de haber iniciado, cortar
+          if (i > startIndex && /^(?:#+\s*|\*\*|__|[IVX]+[\.\)]\s*|\d+[\.\)]\s*)?SECUENCIA\s+DID[AÁ]CTICA\b/i.test(clean)) {
+            cutAtLineIndex = i;
+            cutReason = 'Repetición posterior de encabezado SECUENCIA DIDÁCTICA ignorada';
+            break;
+          }
+
+          // Si aparece una sección de Matriz de Evaluación, Cuadro Curricular, Propósitos o Metadatos posteriores, cortar
+          if (isPostOrMetadataSectionHeader(clean)) {
+            cutAtLineIndex = i;
+            cutReason = `Sección posterior excluida ("${clean.slice(0, 45)}")`;
+            break;
+          }
+
+          // Ignorar líneas individuales de metadatos administrativos infiltradas
+          if (isAdministrativeMetadataLine(clean)) {
+            if (seenCierreMoment) {
+              cutAtLineIndex = i;
+              cutReason = `Metadatos finales excluidos tras el Cierre ("${clean.slice(0, 45)}")`;
+              break;
+            }
+            continue;
+          }
+
+          // Verificar progresión monotónica de Momentos (INICIO -> DESARROLLO -> CIERRE)
+          const mMatch = clean.match(momentHeaderCheck);
+          if (mMatch) {
+            const detectedM = normalizeMoment(mMatch[1]);
+            if (seenCierreMoment && (detectedM === 'INICIO' || detectedM === 'DESARROLLO' || detectedM === 'CIERRE')) {
+              // No permitir que después del Cierre se vuelva a abrir Inicio, Desarrollo o un segundo Cierre repetido
+              cutAtLineIndex = i;
+              cutReason = `Bloque repetido de ${detectedM} después del Cierre descartado`;
+              break;
+            }
+            if (detectedM === 'CIERRE') {
+              seenCierreMoment = true;
+            }
+          }
+
+          // Verificar si es una línea con tiempo asignado
+          const parsedTimed = parseTimedLineFlexible(rawLine);
+          if (parsedTimed) {
+            // Si ya estábamos dentro del último paso "Trabajo de extensión" y aparece otro bloque con tiempo posterior, cortar!
+            if (inTrabajoDeExtension) {
+              cutAtLineIndex = i;
+              cutReason = 'Fin estricto tras "Trabajo de extensión" del Cierre';
+              break;
+            }
+
+            // Detectar si el título contiene un Momento inline que viole el orden tras CIERRE
+            const inlineM = extractInlineMoment(parsedTimed.title);
+            if (inlineM) {
+              if (seenCierreMoment && (inlineM.moment === 'INICIO' || inlineM.moment === 'DESARROLLO')) {
+                cutAtLineIndex = i;
+                cutReason = `Resumen o repetición posterior de ${inlineM.moment} descartado`;
+                break;
+              }
+              if (inlineM.moment === 'CIERRE') {
+                seenCierreMoment = true;
+              }
+            }
+
+            // Detectar si este paso es "Trabajo de extensión" / "Actividad de extensión" (último paso canónico del Cierre)
+            if (/(?:TRABAJO|ACTIVIDAD|TAREA)\s+DE\s+EXTENSI[OÓ]N|\bEXTENSI[OÓ]N\b/i.test(parsedTimed.title)) {
+              seenCierreMoment = true;
+              inTrabajoDeExtension = true;
+            }
+          }
+
+          isolatedLines.push(rawLine);
+        }
+
+        const ignoredPreCount = allLines.slice(0, startIndex).filter(l => l.trim().length > 0).length;
+        const ignoredPostCount = allLines.slice(cutAtLineIndex).filter(l => l.trim().length > 0).length;
+
+        state.scopeAudit = {
+          foundExplicitHeader,
+          ignoredPreLines: ignoredPreCount,
+          ignoredPostLines: ignoredPostCount,
+          firstStepTitle: '',
+          lastStepTitle: '',
+          cutReason
+        };
+
+        return isolatedLines;
+      }
+
+      // -----------------------------------------------------------
+      // 6. TOKENIZADOR TOLERANTE DE LÍNEAS CON PARÉNTESIS MÚLTIPLES
+      //    Y MOTOR DE PARSEO JERÁRQUICO ESTRICTO
+      // -----------------------------------------------------------
+      function parseTimedLineFlexible(rawLine) {
+        if (!rawLine || !rawLine.trim()) return null;
+
+        const prefixMatch = rawLine.match(/^(\s*)(?:([-*•+]|\d+(?:\.\d+)*[\.\)]|[a-zA-Z][\.\)])\s+)?(.*)$/);
+        if (!prefixMatch) return null;
+
+        const indentLen = (prefixMatch[1] || '').length;
+        const bulletSymbol = (prefixMatch[2] || '').trim();
+        const body = (prefixMatch[3] || '').trim();
+        if (!body) return null;
+
+        // Patrón A: Tiempo al inicio entre paréntesis/corchetes
+        const leadingTimeMatch = body.match(/^[\(\[]\s*(\d+(?:[.,]\d+)?)\s*(?:min(?:utos?)?|mins?\.?|m\.?|'|’’)\s*[\)\]]\s*[:\-–—]?\s*(.+)$/i);
+        if (leadingTimeMatch) {
+          const mins = parseFloat(leadingTimeMatch[1].replace(',', '.'));
+          const rest = leadingTimeMatch[2].trim();
+          const splitPos = findTitleDescriptionSplit(rest);
+          return {
+            indentLen,
+            bulletSymbol,
+            title: cleanMarkdownEmphasis(splitPos.title),
+            plannedMinutes: mins,
+            description: splitPos.description
+          };
+        }
+
+        // Patrón B: Tiempo entre paréntesis o corchetes tras el título (incluso si el título tiene otros paréntesis antes)
+        const bracketedTimeRegex = /[\(\[]\s*(\d+(?:[.,]\d+)?)\s*(?:min(?:utos?)?|mins?\.?|m\.?|'|’’)\s*[\)\]]/ig;
+        let match;
+        let chosenMatch = null;
+
+        while ((match = bracketedTimeRegex.exec(body)) !== null) {
+          if (match.index > 0 && match.index <= 165) {
+            chosenMatch = match;
+            break;
+          }
+        }
+
+        if (chosenMatch) {
+          const mins = parseFloat(chosenMatch[1].replace(',', '.'));
+          const rawTitle = body.slice(0, chosenMatch.index).replace(/[:\-–—\s]+$/, '').trim();
+          const rawDesc = body
+            .slice(chosenMatch.index + chosenMatch[0].length)
+            .replace(/^\s*[:\-–—\.]+\s*/, '')
+            .trim();
+
+          if (rawTitle && !isNaN(mins) && mins > 0) {
+            return {
+              indentLen,
+              bulletSymbol,
+              title: cleanMarkdownEmphasis(rawTitle),
+              plannedMinutes: mins,
+              description: rawDesc
+            };
+          }
+        }
+
+        // Patrón C: Tiempo separado por guion o dos puntos sin paréntesis
+        const unbracketedTimeMatch = body.match(/^(.{2,140}?)\s*[:\-–—]\s*(\d+(?:[.,]\d+)?)\s*(?:min(?:utos?)?|mins?\.?|m\.?|'|’’)\b\s*[:\-–—\.]?\s*(.*)$/i);
+        if (unbracketedTimeMatch) {
+          const rawTitle = unbracketedTimeMatch[1].trim();
+          const mins = parseFloat(unbracketedTimeMatch[2].replace(',', '.'));
+          const rawDesc = (unbracketedTimeMatch[3] || '').trim();
+          if (rawTitle && !isNaN(mins) && mins > 0) {
+            return {
+              indentLen,
+              bulletSymbol,
+              title: cleanMarkdownEmphasis(rawTitle),
+              plannedMinutes: mins,
+              description: rawDesc
+            };
+          }
+        }
+
+        return null;
+      }
+
+      function findTitleDescriptionSplit(restStr) {
+        let depth = 0;
+        for (let i = 0; i < restStr.length && i < 140; i++) {
+          const ch = restStr[i];
+          if (ch === '(' || ch === '[') depth++;
+          else if (ch === ')' || ch === ']') depth = Math.max(0, depth - 1);
+          else if (ch === ':' && depth === 0) {
+            return {
+              title: restStr.slice(0, i).trim(),
+              description: restStr.slice(i + 1).trim()
+            };
+          }
+        }
+        return { title: restStr.trim(), description: '' };
+      }
+
+      function cleanMarkdownEmphasis(str) {
+        return String(str || '').replace(/\*\*/g, '').replace(/__/g, '').trim();
+      }
+
+      function extractTitleAndClarifications(fullTitle) {
+        const clean = String(fullTitle || '').trim();
+        const parenMatches = [];
+        const regex = /\(([^()]+)\)/g;
+        let m;
+        while ((m = regex.exec(clean)) !== null) {
+          parenMatches.push(m[1].trim());
+        }
+        const partsDash = clean.split(/\s+[-–—]\s+/);
+        let subtitle = '';
+        if (parenMatches.length > 0) {
+          subtitle = `Aclaración / Sinónimo: ${parenMatches.join(' • ')}`;
+        } else if (partsDash.length >= 2) {
+          subtitle = partsDash.slice(1).join(' — ').trim();
+        }
+        return {
+          displayTitle: clean,
+          subtitle
+        };
+      }
+
+      /**
+       * Motor Principal de Parseo Jerárquico Estricto con Delimitación de "SECUENCIA DIDÁCTICA"
+       */
+      function parseStrictHierarchicalTree(rawInput) {
+        const trimmed = (rawInput || '').trim();
+        state.discardedContainers = [];
+        state.declaredMomentTotals = {};
+        if (!trimmed) return [];
+
+        // Caso A: Entrada JSON (de archivo o respuesta estructurada de la API de IA)
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+          try {
+            const parsedJson = JSON.parse(trimmed);
+            const rawItems = Array.isArray(parsedJson)
+              ? parsedJson
+              : (parsedJson.tareasAtomicas || parsedJson.subfases || parsedJson.pasos || parsedJson.steps || []);
+            if (Array.isArray(rawItems) && rawItems.length > 0) {
+              const flatCandidateNodes = rawItems.map((item) => ({
+                moment: normalizeMoment(item.momento || item.moment || 'DESARROLLO'),
+                indentLen: Number(item.nivel || item.indent || 0),
+                bulletSymbol: '',
+                title: String(item.titulo || item.subfase || item.title || 'Subfase').trim(),
+                plannedMinutes: Number(item.minutos || item.plannedMinutes || item.duracion || 10),
+                description: String(item.instrucciones || item.descripcion || item.description || '').trim(),
+                isMomentCandidate: false,
+                explicitMacroGroup: String(item.bloqueMacro || item.macroGroup || '').trim()
+              }));
+              return deduplicateAndFinalizeAtomicSteps(resolveAtomicTasksFromCandidates(flatCandidateNodes));
+            }
+          } catch (_) {}
+        }
+
+        // Caso B: Texto estructurado o extracción de Word (.docx)
+        const allLines = trimmed.split(/\r?\n/);
+        // 1. Aislar estrictamente la sección "SECUENCIA DIDÁCTICA" (desde Inicio hasta Trabajo de extensión del Cierre)
+        const rawLines = isolateDidacticSequenceLines(allLines);
+
+        let currentMoment = 'INICIO';
+        const candidateNodes = [];
+
+        const momentHeaderRegex = /^(?:\s*(?:#+\s*|\*\*|__|[-*•+]\s*|[IVX]+[\.\)]\s*|\d+[\.\)]\s*|\[)?)\s*(?:MOMENTO\s*(?:\d+|[IVX]+|DE)?\s*[:\-–—]?\s*)?(INICIO|INTRODUCCI[OÓ]N|APERTURA|DESARROLLO|PROCESO|CONSTRUCCI[OÓ]N|CIERRE|CONCLUSI[OÓ]N|SALIDA|EVALUACI[OÓ]N\s+Y\s+CIERRE)(?:\s*\(([^)\d]+)\))?(?:\s*[\(\[]\s*(\d+(?:[.,]\d+)?)\s*(?:min(?:utos?)?|mins?\.?|m\.?|'|’’|hrs?|horas?)?\s*[\)\]])?\s*(?:\*\*|__|\]|:|-|–|—)?\s*$/i;
+
+        for (let i = 0; i < rawLines.length; i++) {
+          const rawLine = rawLines[i];
+          const cleanLine = rawLine.trim();
+          if (!cleanLine) continue;
+
+          // Verificar encabezado de Momento Macro
+          const momentMatch = cleanLine.match(momentHeaderRegex);
+          if (momentMatch) {
+            currentMoment = normalizeMoment(momentMatch[1]);
+            if (momentMatch[3]) {
+              const momentMins = parseFloat(momentMatch[3].replace(',', '.'));
+              if (!isNaN(momentMins) && momentMins > 0) {
+                state.declaredMomentTotals[currentMoment] = momentMins;
+                state.discardedContainers.push({
+                  kind: 'MOMENTO MACRO',
+                  moment: currentMoment,
+                  title: `Momento ${currentMoment}`,
+                  minutes: momentMins,
+                  reason: 'Contenedor raíz del momento pedagógico'
+                });
+              }
+            }
+            continue;
+          }
+
+          // Tokenizar línea con soporte para paréntesis múltiples
+          const parsedLine = parseTimedLineFlexible(rawLine);
+
+          if (parsedLine && parsedLine.title && !isNaN(parsedLine.plannedMinutes) && parsedLine.plannedMinutes > 0) {
+            if (isAdministrativeMetadataLine(parsedLine.title)) {
+              continue;
+            }
+
+            const pureMomentTitle = parsedLine.title.match(/^(?:[IVX]+[\.\)]\s*|\d+[\.\)]\s*)?(?:MOMENTO\s*(?:\d+|[IVX]+|DE)?\s*[:\-–—]?\s*)?(INICIO|APERTURA|INTRODUCCI[OÓ]N|DESARROLLO|PROCESO|CIERRE|CONCLUSI[OÓ]N|SALIDA)(?:\s*\([^)]+\))?$/i);
+            if (pureMomentTitle) {
+              currentMoment = normalizeMoment(pureMomentTitle[1]);
+              state.declaredMomentTotals[currentMoment] = parsedLine.plannedMinutes;
+              candidateNodes.push({
+                moment: currentMoment,
+                indentLen: -1,
+                bulletSymbol: parsedLine.bulletSymbol,
+                title: `Momento ${currentMoment}`,
+                plannedMinutes: parsedLine.plannedMinutes,
+                description: parsedLine.description,
+                isMomentCandidate: true,
+                explicitMacroGroup: ''
+              });
+              continue;
+            }
+
+            const inlineMoment = extractInlineMoment(parsedLine.title);
+            let cleanStepTitle = parsedLine.title;
+            if (inlineMoment) {
+              currentMoment = inlineMoment.moment;
+              cleanStepTitle = inlineMoment.cleanTitle;
+            }
+
+            candidateNodes.push({
+              moment: currentMoment,
+              indentLen: parsedLine.indentLen,
+              bulletSymbol: parsedLine.bulletSymbol,
+              title: cleanStepTitle,
+              plannedMinutes: parsedLine.plannedMinutes,
+              description: parsedLine.description,
+              isMomentCandidate: false,
+              explicitMacroGroup: ''
+            });
+          } else if (candidateNodes.length > 0) {
+            const prev = candidateNodes[candidateNodes.length - 1];
+            const extraText = cleanLine.replace(/^[-*•+]\s+/, '');
+            prev.description = prev.description
+              ? `${prev.description}\n${extraText}`
+              : extraText;
+          }
+        }
+
+        // Resolver árbol jerárquico y filtrar cualquier repetición accidental de bloques
+        const atomicSteps = deduplicateAndFinalizeAtomicSteps(resolveAtomicTasksFromCandidates(candidateNodes));
+
+        if (atomicSteps.length > 0) {
+          state.scopeAudit.firstStepTitle = `${atomicSteps[0].title} (${atomicSteps[0].moment})`;
+          state.scopeAudit.lastStepTitle = `${atomicSteps[atomicSteps.length - 1].title} (${atomicSteps[atomicSteps.length - 1].moment})`;
+        }
+
+        return atomicSteps;
+      }
+
+      /**
+       * Garantiza que ninguna tarea repetida (por resúmenes finales o encabezados duplicados)
+       * vuelva a ser agregada a la secuencia lineal y asegura el orden monotónico INICIO -> DESARROLLO -> CIERRE.
+       */
+      function deduplicateAndFinalizeAtomicSteps(steps) {
+        const seenKeys = new Set();
+        const result = [];
+        let reachedCierre = false;
+
+        for (let i = 0; i < steps.length; i++) {
+          const step = steps[i];
+          if (step.moment === 'CIERRE') {
+            reachedCierre = true;
+          } else if (reachedCierre && (step.moment === 'INICIO' || step.moment === 'DESARROLLO')) {
+            // Bloquear cualquier intento de reabrir Inicio o Desarrollo tras el Cierre
+            continue;
+          }
+
+          const normKey = `${step.moment}::${step.title.toLowerCase().replace(/[^a-záéíóúñ0-9]/g, '')}`;
+          if (seenKeys.has(normKey)) {
+            continue;
+          }
+          seenKeys.add(normKey);
+
+          step.id = result.length + 1;
+          result.push(step);
+
+          // Si este paso en CIERRE es "Trabajo de extensión", cortar cualquier paso posterior
+          if (step.moment === 'CIERRE' && /(?:TRABAJO|ACTIVIDAD|TAREA)\s+DE\s+EXTENSI[OÓ]N|\bEXTENSI[OÓ]N\b/i.test(step.title)) {
+            break;
+          }
+        }
+
+        return result;
+      }
+
+      function resolveAtomicTasksFromCandidates(candidates) {
+        if (!Array.isArray(candidates) || candidates.length === 0) return [];
+
+        const finalAtomicList = [];
+        let i = 0;
+
+        while (i < candidates.length) {
+          const currentNode = candidates[i];
+          const partitionMatch = findContainerPartition(candidates, i);
+
+          if (partitionMatch.isContainer) {
+            state.discardedContainers.push({
+              kind: currentNode.isMomentCandidate ? 'MOMENTO MACRO' : 'CONTENEDOR MACRO',
+              moment: currentNode.moment,
+              title: currentNode.title,
+              minutes: currentNode.plannedMinutes,
+              childrenCount: partitionMatch.endIdx - i,
+              childrenSum: Math.round(partitionMatch.childrenNetSum * 10) / 10,
+              reason: partitionMatch.reason || `Sus subfases internas suman ${Math.round(partitionMatch.childrenNetSum * 10) / 10} min`
+            });
+
+            const inheritedGroupName = currentNode.isMomentCandidate
+              ? ''
+              : (currentNode.explicitMacroGroup
+                  ? `${currentNode.explicitMacroGroup} › ${currentNode.title}`
+                  : currentNode.title);
+
+            for (let c = i + 1; c <= partitionMatch.endIdx; c++) {
+              if (inheritedGroupName && !candidates[c].explicitMacroGroup) {
+                candidates[c].explicitMacroGroup = inheritedGroupName;
+              }
+              if (!candidates[c].description && currentNode.description) {
+                candidates[c].description = currentNode.description;
+              }
+            }
+
+            i = i + 1;
+          } else {
+            const secs = Math.max(10, Math.round(currentNode.plannedMinutes * 60));
+            const titleInfo = extractTitleAndClarifications(currentNode.title);
+            const macroPath = currentNode.explicitMacroGroup || '';
+
+            finalAtomicList.push({
+              id: finalAtomicList.length + 1,
+              moment: currentNode.moment,
+              macroGroup: macroPath,
+              title: titleInfo.displayTitle,
+              subtitle: titleInfo.subtitle || (macroPath ? `Dentro de: ${macroPath}` : `Subfase atómica de ${currentNode.moment}`),
+              plannedMinutes: Math.round(currentNode.plannedMinutes * 10) / 10,
+              plannedSeconds: secs,
+              adjustedSeconds: secs,
+              description: currentNode.description || 'Ejecutar consigna pedagógica correspondiente a esta subfase.',
+              status: 'pending',
+              spentSeconds: 0
+            });
+            i = i + 1;
+          }
+        }
+
+        return finalAtomicList;
+      }
+
+      function findContainerPartition(candidates, startIdx) {
+        const parent = candidates[startIdx];
+        const targetMins = parent.plannedMinutes;
+
+        if (startIdx >= candidates.length - 1) {
+          return { isContainer: false };
+        }
+
+        // Criterio 1: Suma de subsecuencia contigua de subfases dentro del mismo Momento
+        let runningSum = 0;
+        let childCount = 0;
+
+        for (let j = startIdx + 1; j < candidates.length; j++) {
+          const item = candidates[j];
+          if (item.moment !== parent.moment) break;
+
+          runningSum += item.plannedMinutes;
+          childCount += 1;
+
+          const tolerance = childCount >= 2 ? 1.5 : 0.6;
+          if (Math.abs(runningSum - targetMins) <= tolerance) {
+            if (childCount >= 2 || parent.isMomentCandidate || !parent.description || isSemanticContainerTitle(parent.title)) {
+              return {
+                isContainer: true,
+                endIdx: j,
+                childrenNetSum: runningSum,
+                reason: `Contiene ${childCount} subfases internas que suman ${Math.round(runningSum * 10) / 10} min`
+              };
+            }
+          }
+
+          if (runningSum > targetMins + 2.0) {
+            break;
+          }
+        }
+
+        // Criterio 2: Anidación estructural por sangría o viñetas hijas
+        let indentedSum = 0;
+        let indentedEndIdx = -1;
+        let indentedCount = 0;
+
+        for (let j = startIdx + 1; j < candidates.length; j++) {
+          const item = candidates[j];
+          if (item.moment !== parent.moment) break;
+
+          const isMoreIndented = item.indentLen > parent.indentLen;
+          const isChildBullet = (parent.bulletSymbol === '-' && (item.bulletSymbol === '*' || item.bulletSymbol === '•' || item.bulletSymbol === '+'));
+
+          if ((isMoreIndented || isChildBullet) && (indentedSum + item.plannedMinutes <= targetMins + 3)) {
+            indentedSum += item.plannedMinutes;
+            indentedEndIdx = j;
+            indentedCount += 1;
+          } else {
+            break;
+          }
+        }
+
+        if (indentedCount >= 2 && indentedEndIdx > startIdx) {
+          return {
+            isContainer: true,
+            endIdx: indentedEndIdx,
+            childrenNetSum: indentedSum,
+            reason: `Contenedor jerárquico de ${indentedCount} subfases anidadas (${Math.round(indentedSum * 10) / 10} min)`
+          };
+        }
+
+        // Criterio 3: Reconciliación con el tiempo total declarado del Momento Macro
+        const declaredMomentTotal = state.declaredMomentTotals[parent.moment];
+        if (declaredMomentTotal && isSemanticContainerTitle(parent.title)) {
+          const restInMoment = [];
+          for (let j = startIdx + 1; j < candidates.length; j++) {
+            if (candidates[j].moment !== parent.moment) break;
+            restInMoment.push({ idx: j, mins: candidates[j].plannedMinutes });
+          }
+          const sumWithoutParent = restInMoment.reduce((a, b) => a + b.mins, 0);
+          if (restInMoment.length >= 2 && Math.abs(sumWithoutParent - declaredMomentTotal) <= 2.0) {
+            return {
+              isContainer: true,
+              endIdx: restInMoment[restInMoment.length - 1].idx,
+              childrenNetSum: targetMins,
+              reason: `Reconciliado con el total del momento ${parent.moment} (${declaredMomentTotal} min)`
+            };
+          }
+        }
+
+        return { isContainer: false };
+      }
+
+      function isSemanticContainerTitle(title) {
+        const upper = String(title || '').toUpperCase();
+        return (
+          upper.includes('PROCESOS DE APRENDIZAJE') ||
+          upper.includes('PROCESOS DIDÁCTICOS') ||
+          upper.includes('PROCESOS DIDACTICOS') ||
+          upper.includes('PROCESOS PEDAGÓGICOS') ||
+          upper.includes('PROCESOS PEDAGOGICOS') ||
+          upper.includes('GESTIÓN Y ACOMPAÑAMIENTO') ||
+          upper.includes('GESTION Y ACOMPAÑAMIENTO') ||
+          upper.includes('SECUENCIA DIDÁCTICA') ||
+          upper.includes('ACTIVIDADES DE ') ||
+          upper.includes('BLOQUE ')
+        );
+      }
+
+      function normalizeMoment(rawMoment) {
+        const upper = String(rawMoment || '').toUpperCase();
+        if (upper.includes('INICIO') || upper.includes('APERTURA') || upper.includes('INTRODUCC')) {
+          return 'INICIO';
+        }
+        if (upper.includes('CIERRE') || upper.includes('CONCLUSI') || upper.includes('SALIDA')) {
+          return 'CIERRE';
+        }
+        return 'DESARROLLO';
+      }
+
+      function extractInlineMoment(rawTitle) {
+        const m = rawTitle.match(/^(INICIO|DESARROLLO|CIERRE)\s*[:\-–—\/]\s*(.+)$/i);
+        if (!m) return null;
+        return {
+          moment: normalizeMoment(m[1]),
+          cleanTitle: m[2].trim()
+        };
+      }
+
+      function reconcileAtomicStepsToTargetMinutes(targetTotalMinutes) {
+        if (state.parsedSteps.length === 0 || targetTotalMinutes <= 0) return;
+
+        const currentTotalMinutes = state.parsedSteps.reduce((acc, s) => acc + s.plannedMinutes, 0);
+        if (currentTotalMinutes <= 0 || Math.abs(currentTotalMinutes - targetTotalMinutes) < 0.1) return;
+
+        const scale = targetTotalMinutes / currentTotalMinutes;
+        let accumulatedMins = 0;
+
+        state.parsedSteps.forEach((step, idx) => {
+          if (idx === state.parsedSteps.length - 1) {
+            step.plannedMinutes = Math.max(1, Math.round((targetTotalMinutes - accumulatedMins) * 10) / 10);
+          } else {
+            step.plannedMinutes = Math.max(1, Math.round(step.plannedMinutes * scale));
+            accumulatedMins += step.plannedMinutes;
+          }
+          step.plannedSeconds = Math.round(step.plannedMinutes * 60);
+          step.adjustedSeconds = step.plannedSeconds;
+        });
+
+        renderSetupPreviewFromState();
+      }
+
+      // -----------------------------------------------------------
+      // 7. CONECTOR HÍBRIDO CON API DE LENGUAJE (LLM)
+      // -----------------------------------------------------------
+      async function runSemanticAiParser() {
+        const rawText = dom.sessionRawTextarea.value.trim();
+        if (!rawText) return;
+
+        // Pre-recortar el texto a la sección SECUENCIA DIDÁCTICA antes de enviarlo al modelo de IA
+        const isolatedLines = isolateDidacticSequenceLines(rawText.split(/\r?\n/));
+        const isolatedText = isolatedLines.join('\n');
+
+        const apiKey = (dom.aiApiKeyInput.value || localStorage.getItem('aulaflow_llm_key') || '').trim();
+        const provider = dom.aiProviderSelect.value || 'gemini';
+
+        if (apiKey) {
+          localStorage.setItem('aulaflow_llm_key', apiKey);
+        }
+
+        if (!apiKey) {
+          refreshSetupPreview();
+          const discardedMins = state.discardedContainers.reduce((acc, c) => acc + c.minutes, 0);
+          const netMins = state.parsedSteps.reduce((acc, s) => acc + s.plannedMinutes, 0);
+          dom.aiStatusMessage.textContent = `Secuencia Didáctica aislada: ${state.parsedSteps.length} tareas atómicas extraídas (${Math.round(netMins * 10) / 10} min netos), ${discardedMins} min de contenedores filtrados y ${state.scopeAudit.ignoredPreLines + state.scopeAudit.ignoredPostLines} líneas de metadatos/matrices excluidas.`;
+          dom.aiStatusMessage.className = 'text-[11px] font-bold text-emerald-700 mt-1.5';
+          return;
+        }
+
+        dom.btnRunAiSemanticParse.disabled = true;
+        dom.btnRunAiSemanticParse.textContent = 'Analizando con IA...';
+        dom.aiStatusMessage.textContent = 'Procesando exclusivamente SECUENCIA DIDÁCTICA y excluyendo metadatos posteriores al Cierre...';
+        dom.aiStatusMessage.className = 'text-[11px] font-bold text-indigo-700 mt-1.5';
+
+        const officialWindowMin = Math.round(getOfficialWindowSeconds(state.plannedStartStr, state.mandatoryEndStr) / 60) || 90;
+
+        const systemInstruction = `Eres un motor de parseo jerárquico estricto para sesiones de aprendizaje docente.
+REGLAS OBLIGATORIAS E INQUEBRANTABLES:
+1. DELIMITACIÓN ESTRICTA: Procesa EXCLUSIVAMENTE la sección "SECUENCIA DIDÁCTICA" (desde los Lineamientos preliminares del Inicio hasta el Trabajo de extensión del Cierre). IGNORA CATEGÓRICAMENTE cualquier repetición posterior de encabezados institucionales, cuadros de áreas curriculares, matrices de evaluación, propósitos o metadatos que aparezcan después del último paso del Cierre.
+2. TOLERANCIA A PARÉNTESIS Y SINÓNIMOS: Extrae todas las subfases atómicas con tiempo asignado incluso cuando sus títulos contengan aclaraciones o sinónimos entre paréntesis (ej. "Problematización (Conflicto cognitivo) (3 min)").
+3. NO DUPLICACIÓN DE CONTENEDORES: Si un bloque macro (ej. "INICIO 15 min", "DESARROLLO 60 min" o "Procesos de Aprendizaje 42 min") contiene subfases internas que suman ese tiempo, descarta el bloque contenedor y secuencia únicamente las tareas atómicas finales en orden estricto.
+4. La suma total de las subfases de Inicio, Desarrollo y Cierre debe reconciliarse con el tiempo neto real de la sesión (${officialWindowMin} minutos en total).
+Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
+{
+  "momento": "INICIO" | "DESARROLLO" | "CIERRE",
+  "bloqueMacro": "Nombre del contenedor padre si aplica, o cadena vacía",
+  "titulo": "Título completo incluyendo cualquier aclaración entre paréntesis",
+  "subtitulo": "Sinónimo o propósito breve",
+  "minutos": número (duración en minutos),
+  "instrucciones": "Instrucciones pedagógicas completas"
+}`;
+
+        try {
+          let parsedJsonText = '';
+
+          if (provider === 'gemini') {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+            const resp = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: `${systemInstruction}\n\nSECUENCIA DIDÁCTICA AISLADA:\n${isolatedText}` }] }],
+                generationConfig: { responseMimeType: 'application/json', temperature: 0.1 }
+              })
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            parsedJsonText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          } else {
+            const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+              },
+              body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                response_format: { type: 'json_object' },
+                temperature: 0.1,
+                messages: [
+                  { role: 'system', content: systemInstruction },
+                  { role: 'user', content: isolatedText }
+                ]
+              })
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            parsedJsonText = data?.choices?.[0]?.message?.content || '';
+          }
+
+          if (parsedJsonText) {
+            const cleanJson = parsedJsonText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+            const aiSteps = parseStrictHierarchicalTree(cleanJson);
+            if (aiSteps.length > 0) {
+              state.parsedSteps = aiSteps;
+              renderSetupPreviewFromState();
+              dom.aiStatusMessage.textContent = `Análisis con IA completado: ${aiSteps.length} subfases atómicas extraídas dentro de SECUENCIA DIDÁCTICA, sin metadatos ni repeticiones finales.`;
+              dom.aiStatusMessage.className = 'text-[11px] font-bold text-emerald-700 mt-1.5';
+            }
+          }
+        } catch (err) {
+          dom.aiStatusMessage.textContent = `API externa no disponible (${err.message}). Se aplicó el Delimitador y Parser Jerárquico Local con éxito.`;
+          dom.aiStatusMessage.className = 'text-[11px] font-bold text-amber-700 mt-1.5';
+          refreshSetupPreview();
+        } finally {
+          dom.btnRunAiSemanticParse.disabled = false;
+          dom.btnRunAiSemanticParse.textContent = 'Analizar y Reconciliar con IA';
+        }
+      }
+
+      // -----------------------------------------------------------
+      // 8. EXTRACTOR WORD (.DOCX / .DOC) CON PRESERVACIÓN MULTILÍNEA
+      // -----------------------------------------------------------
+      async function extractTextFromWordFile(file) {
+        const arrayBuffer = await file.arrayBuffer();
+
+        if (window.mammoth) {
+          try {
+            const htmlResult = await window.mammoth.convertToHtml({ arrayBuffer });
+            const structuredFromHtml = convertWordHtmlToSessionText(htmlResult.value);
+            if (structuredFromHtml && structuredFromHtml.trim().length > 10) {
+              return { text: structuredFromHtml, method: 'Word (.docx) Delimitado' };
+            }
+            const rawResult = await window.mammoth.extractRawText({ arrayBuffer });
+            if (rawResult.value && rawResult.value.trim().length > 0) {
+              return { text: rawResult.value.trim(), method: 'Word (.docx)' };
+            }
+          } catch (_) {}
+        }
+
+        if (window.JSZip) {
+          try {
+            const zip = await window.JSZip.loadAsync(arrayBuffer);
+            const docXmlFile = zip.file('word/document.xml');
+            if (docXmlFile) {
+              const xmlContent = await docXmlFile.async('string');
+              const extracted = parseOpenXmlDocument(xmlContent);
+              if (extracted.trim().length > 0) {
+                return { text: extracted, method: 'OpenXML (.docx)' };
+              }
+            }
+          } catch (_) {}
+        }
+
+        const decoder = new TextDecoder('utf-8', { fatal: false });
+        const raw = decoder.decode(arrayBuffer);
+        const matches = raw.match(/[A-Za-zÁÉÍÓÚáéíóúÑñÜü0-9\s.,;:()\[\]\-–—¿?¡!"'\n\r]{12,}/g);
+        return {
+          text: matches ? matches.join('\n').trim() : raw.trim(),
+          method: 'Lector Word (.doc)'
+        };
+      }
+
+      function extractLinesFromCellElement(cellEl) {
+        const blockEls = cellEl.querySelectorAll('p, li, h1, h2, h3, h4, div');
+        if (blockEls.length > 0) {
+          const lines = [];
+          blockEls.forEach((el) => {
+            const isListItem = el.tagName === 'LI';
+            const txt = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+            if (txt) {
+              lines.push(isListItem && !/^[-*•+]/.test(txt) ? `  * ${txt}` : txt);
+            }
+          });
+          if (lines.length > 0) return lines;
+        }
+        return (cellEl.innerText || cellEl.textContent || '')
+          .split(/\r?\n/)
+          .map(l => l.replace(/\s+/g, ' ').trim())
+          .filter(Boolean);
+      }
+
+      function convertWordHtmlToSessionText(htmlString) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlString, 'text/html');
+        const linesOut = [];
+
+        // Recorrer los nodos del body en orden de aparición documental (párrafos, encabezados y tablas)
+        // para preservar exactamente la posición del encabezado "SECUENCIA DIDÁCTICA" y de las tablas posteriores
+        Array.from(doc.body.children).forEach((child) => {
+          if (child.tagName === 'TABLE') {
+            const rows = child.querySelectorAll('tr');
+            rows.forEach((row) => {
+              const cellElements = Array.from(row.querySelectorAll('td, th'));
+              if (cellElements.length === 0) return;
+
+              const cellLinesArray = cellElements.map(extractLinesFromCellElement).filter(arr => arr.length > 0);
+              if (cellLinesArray.length === 0) return;
+
+              const flatRowTextUpper = cellLinesArray.map(a => a.join(' ')).join(' ').toUpperCase();
+              if (
+                cellLinesArray.length >= 2 &&
+                (flatRowTextUpper.includes('MOMENTO') || flatRowTextUpper.includes('ESTRATEGIA')) &&
+                (flatRowTextUpper.includes('TIEMPO') || flatRowTextUpper.includes('DURACI')) &&
+                flatRowTextUpper.length < 150
+              ) {
+                return;
+              }
+
+              let detectedMomentHeader = null;
+              let detectedRowMinutes = null;
+              const contentLineGroups = [];
+
+              cellLinesArray.forEach((linesInCell) => {
+                const singleLine = linesInCell.length === 1 ? linesInCell[0] : '';
+                const onlyMoment = singleLine.match(/^(?:[IVX]+[\.\)]\s*)?(INICIO|INTRODUCCI[OÓ]N|APERTURA|DESARROLLO|PROCESO|CIERRE|CONCLUSI[OÓ]N|SALIDA)(?:\s*[\(\[]\s*(\d+(?:[.,]\d+)?)\s*(?:min(?:utos?)?|m|'|’’)?\s*[\)\]])?$/i);
+                const onlyTime = singleLine.match(/^(\d+(?:[.,]\d+)?)\s*(?:min(?:utos?)?|m|'|’’)?$/i);
+
+                if (onlyMoment && !detectedMomentHeader) {
+                  const mName = normalizeMoment(onlyMoment[1]);
+                  const mTime = onlyMoment[2] ? ` (${onlyMoment[2]} min)` : '';
+                  detectedMomentHeader = `${mName}${mTime}`;
+                } else if (onlyTime && !detectedRowMinutes && Number(onlyTime[1].replace(',', '.')) <= 240) {
+                  detectedRowMinutes = Number(onlyTime[1].replace(',', '.'));
+                } else {
+                  contentLineGroups.push(linesInCell);
+                }
+              });
+
+              if (detectedMomentHeader) {
+                linesOut.push(detectedMomentHeader);
+              }
+
+              if (contentLineGroups.length > 0) {
+                const allContentLines = contentLineGroups.flat();
+                if (allContentLines.length === 1) {
+                  const single = allContentLines[0];
+                  const alreadyHasTime = /[\(\[]\s*\d+(?:[.,]\d+)?\s*(?:min|m|')/i.test(single);
+                  if (detectedRowMinutes && !alreadyHasTime) {
+                    const colonIdx = single.indexOf(':');
+                    if (colonIdx > 0 && colonIdx < 90) {
+                      linesOut.push(`- ${single.slice(0, colonIdx).trim()} (${detectedRowMinutes} min): ${single.slice(colonIdx + 1).trim()}`);
+                    } else {
+                      linesOut.push(`- Actividad (${detectedRowMinutes} min): ${single}`);
+                    }
+                  } else {
+                    linesOut.push(single);
+                  }
+                } else {
+                  allContentLines.forEach((line) => linesOut.push(line));
+                }
+              }
+            });
+          } else {
+            const isLi = child.tagName === 'LI';
+            const txt = (child.innerText || child.textContent || '').replace(/\s+/g, ' ').trim();
+            if (txt) {
+              linesOut.push(isLi && !/^[-*•+]/.test(txt) ? `  * ${txt}` : txt);
+            }
+          }
+        });
+
+        return linesOut.join('\n');
+      }
+
+      function parseOpenXmlDocument(xmlString) {
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlString, 'application/xml');
+        const paragraphs = xmlDoc.getElementsByTagName('w:p');
+        const lines = [];
+        for (let i = 0; i < paragraphs.length; i++) {
+          const texts = paragraphs[i].getElementsByTagName('w:t');
+          let pText = '';
+          for (let j = 0; j < texts.length; j++) {
+            pText += texts[j].textContent || '';
+          }
+          if (pText.trim()) lines.push(pText.trim());
+        }
+        return lines.join('\n');
+      }
+
+      // -----------------------------------------------------------
+      // 9. UTILIDADES DE FORMATO Y CÁLCULO HORARIO
+      // -----------------------------------------------------------
+      function formatSecondsMMSS(totalSeconds) {
+        const isNegative = totalSeconds < 0;
+        const absSec = Math.abs(Math.round(totalSeconds));
+        const hours = Math.floor(absSec / 3600);
+        const minutes = Math.floor((absSec % 3600) / 60);
+        const seconds = absSec % 60;
+
+        const mm = String(minutes).padStart(2, '0');
+        const ss = String(seconds).padStart(2, '0');
+        const prefix = isNegative ? '-' : '';
+
+        if (hours > 0) {
+          return `${prefix}${String(hours).padStart(2, '0')}:${mm}:${ss}`;
+        }
+        return `${prefix}${mm}:${ss}`;
+      }
+
+      function formatSecondsHHMMSS(totalSeconds) {
+        const isNegative = totalSeconds < 0;
+        const absSec = Math.abs(Math.round(totalSeconds));
+        const hours = Math.floor(absSec / 3600);
+        const minutes = Math.floor((absSec % 3600) / 60);
+        const seconds = absSec % 60;
+        const prefix = isNegative ? '-' : '';
+        return `${prefix}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      }
+
+      function formatDateToHHMM(dateObj) {
+        return `${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
+      }
+
+      function formatDateToHHMMSS(dateObj) {
+        return `${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}:${String(dateObj.getSeconds()).padStart(2, '0')}`;
+      }
+
+      function timeStringToDateToday(timeStr, referenceNow) {
+        const now = referenceNow ? new Date(referenceNow) : new Date();
+        const parts = String(timeStr || '12:00').split(':');
+        const hours = parseInt(parts[0], 10) || 0;
+        const minutes = parseInt(parts[1], 10) || 0;
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
+      }
+
+      function getOfficialWindowSeconds(startStr, endStr) {
+        const now = new Date();
+        const startDate = timeStringToDateToday(startStr, now);
+        let endDate = timeStringToDateToday(endStr, now);
+        if (endDate <= startDate) {
+          endDate = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+        }
+        return Math.round((endDate.getTime() - startDate.getTime()) / 1000);
+      }
+
+      function getMomentBadgeStyle(moment) {
+        if (moment === 'INICIO') return 'bg-sky-600 text-white';
+        if (moment === 'CIERRE') return 'bg-teal-600 text-white';
+        return 'bg-indigo-600 text-white';
+      }
+
+      function escapeHtml(str) {
+        return String(str || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      // -----------------------------------------------------------
+      // 10. PREVISUALIZACIÓN DE DELIMITACIÓN Y TAREAS ATÓMICAS
+      // -----------------------------------------------------------
+      function refreshSetupPreview() {
+        state.plannedStartStr = dom.plannedStartInput.value || '10:30';
+        state.mandatoryEndStr = dom.mandatoryEndInput.value || '12:00';
+        state.parsedSteps = parseStrictHierarchicalTree(dom.sessionRawTextarea.value);
+        renderSetupPreviewFromState();
+      }
+
+      function renderSetupPreviewFromState() {
+        const officialSec = getOfficialWindowSeconds(state.plannedStartStr, state.mandatoryEndStr);
+        const officialMin = Math.round(officialSec / 60);
+
+        const totalPlannedSec = state.parsedSteps.reduce((acc, s) => acc + s.plannedSeconds, 0);
+        const totalPlannedMin = Math.round((totalPlannedSec / 60) * 10) / 10;
+
+        const discardedMins = Math.round(
+          state.discardedContainers.reduce((acc, c) => acc + (c.minutes || 0), 0) * 10
+        ) / 10;
+
+        dom.previewOfficialMinutes.textContent = `${officialMin} min`;
+        dom.previewPlannedMinutes.textContent = `${totalPlannedMin} min`;
+        dom.previewDiscardedMinutes.textContent = `${discardedMins} min`;
+        dom.previewSubphasesCount.textContent = `${state.parsedSteps.length} pasos`;
+        dom.parsedCountLabel.textContent = String(state.parsedSteps.length);
+
+        // Desglose por Momento Macro (Inicio, Desarrollo, Cierre)
+        const momentsSummary = {
+          INICIO: { mins: 0, count: 0 },
+          DESARROLLO: { mins: 0, count: 0 },
+          CIERRE: { mins: 0, count: 0 }
+        };
+        state.parsedSteps.forEach((s) => {
+          const m = momentsSummary[s.moment] ? s.moment : 'DESARROLLO';
+          momentsSummary[m].mins = Math.round((momentsSummary[m].mins + s.plannedMinutes) * 10) / 10;
+          momentsSummary[m].count += 1;
+        });
+
+        dom.breakdownInicioLabel.textContent = `${momentsSummary.INICIO.mins} min (${momentsSummary.INICIO.count} ${momentsSummary.INICIO.count === 1 ? 'paso' : 'pasos'})`;
+        dom.breakdownDesarrolloLabel.textContent = `${momentsSummary.DESARROLLO.mins} min (${momentsSummary.DESARROLLO.count} ${momentsSummary.DESARROLLO.count === 1 ? 'paso' : 'pasos'})`;
+        dom.breakdownCierreLabel.textContent = `${momentsSummary.CIERRE.mins} min (${momentsSummary.CIERRE.count} ${momentsSummary.CIERRE.count === 1 ? 'paso' : 'pasos'})`;
+
+        // Panel de auditoría de delimitación de SECUENCIA DIDÁCTICA
+        const totalExcludedLines = (state.scopeAudit.ignoredPreLines || 0) + (state.scopeAudit.ignoredPostLines || 0);
+        if (totalExcludedLines > 0 || state.scopeAudit.foundExplicitHeader) {
+          dom.scopeExclusionPanel.classList.remove('hidden');
+          dom.excludedLinesCountBadge.textContent = `${totalExcludedLines} líneas de metadatos/matrices excluidas`;
+          dom.scopeExclusionDetails.innerHTML = `
+            Rango procesado: <strong>${escapeHtml(state.scopeAudit.firstStepTitle || 'Inicio')}</strong> → <strong>${escapeHtml(state.scopeAudit.lastStepTitle || 'Cierre')}</strong>.
+            ${state.scopeAudit.ignoredPreLines > 0 ? `Se ignoraron <strong>${state.scopeAudit.ignoredPreLines}</strong> líneas previas a SECUENCIA DIDÁCTICA.` : ''}
+            ${state.scopeAudit.ignoredPostLines > 0 ? `Se bloquearon <strong>${state.scopeAudit.ignoredPostLines}</strong> líneas posteriores al Cierre (${escapeHtml(state.scopeAudit.cutReason)}).` : ''}
+          `;
+          dom.scopeDelimitedBadge.textContent = 'Secuencia Didáctica delimitada';
+        } else {
+          dom.scopeExclusionPanel.classList.add('hidden');
+          dom.scopeDelimitedBadge.textContent = 'Secuencia Didáctica activa';
+        }
+
+        // Mostrar botón de reconciliación flexible si la suma neta difiere de la ventana oficial (ej. 90 min)
+        if (state.parsedSteps.length > 0 && Math.abs(totalPlannedMin - officialMin) >= 0.5) {
+          dom.btnReconcileToWindow.classList.remove('hidden');
+          dom.btnReconcileToWindow.textContent = `Reconciliar suma (${totalPlannedMin}m → ${officialMin}m)`;
+        } else {
+          dom.btnReconcileToWindow.classList.add('hidden');
+        }
+
+        // Renderizar panel de bloques contenedores descartados
+        if (state.discardedContainers.length > 0) {
+          dom.discardedContainersPanel.classList.remove('hidden');
+          dom.discardedContainersCountBadge.textContent = `${state.discardedContainers.length} filtrados (${discardedMins} min no duplicados)`;
+          dom.discardedContainersList.innerHTML = state.discardedContainers.map((c) => `
+            <div class="flex flex-wrap items-center justify-between gap-2 bg-white/80 rounded-lg px-2.5 py-1.5 border border-amber-200/80">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="px-1.5 py-0.5 rounded bg-amber-200 text-amber-950 text-[10px] font-extrabold uppercase shrink-0">
+                  ${escapeHtml(c.kind)}
+                </span>
+                <span class="font-bold text-slate-800 truncate">
+                  ${escapeHtml(c.title)}
+                </span>
+                <span class="text-[11px] text-amber-800 hidden sm:inline">
+                  — ${escapeHtml(c.reason)}
+                </span>
+              </div>
+              <span class="font-mono text-xs font-extrabold line-through text-amber-800 shrink-0">
+                ${c.minutes} min (Descartado)
+              </span>
+            </div>
+          `).join('');
+          dom.hierarchyReconcileBadge.textContent = `Reconciliado: ${totalPlannedMin} min netos`;
+        } else {
+          dom.discardedContainersPanel.classList.add('hidden');
+          dom.hierarchyReconcileBadge.textContent = `Secuencia lineal (${totalPlannedMin} min netos)`;
+        }
+
+        if (state.parsedSteps.length === 0) {
+          dom.parserAlertBadge.textContent = 'Sin tareas atómicas';
+          dom.parserAlertBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700';
+          dom.parsedPreviewList.innerHTML = `
+            <div class="rounded-xl bg-slate-50 border border-slate-200 p-4 text-xs font-semibold text-slate-500 text-center">
+              Sube un archivo Word (.docx), pega desde el portapapeles o escribe las subfases de tu sesión.
+            </div>
+          `;
+          dom.btnStartSession.disabled = true;
+          dom.btnStartSession.classList.add('opacity-50', 'cursor-not-allowed');
+          return;
+        }
+
+        dom.btnStartSession.disabled = false;
+        dom.btnStartSession.classList.remove('opacity-50', 'cursor-not-allowed');
+        dom.parserAlertBadge.textContent = 'Secuencia atómica lista';
+        dom.parserAlertBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800';
+
+        dom.parsedPreviewList.innerHTML = state.parsedSteps.map((step, index) => `
+          <div class="rounded-xl border border-slate-200/90 bg-slate-50/60 hover:bg-white p-3 transition-all shadow-xs flex flex-col gap-1.5">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex flex-wrap items-center gap-1.5 min-w-0">
+                <span class="px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono text-[10px] font-extrabold shrink-0">
+                  #${index + 1}
+                </span>
+                <span class="px-2 py-0.5 rounded-md ${getMomentBadgeStyle(step.moment)} text-[10px] font-extrabold uppercase tracking-wider shrink-0">
+                  ${escapeHtml(step.moment)}
+                </span>
+                ${step.macroGroup ? `
+                  <span class="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 text-[10px] font-bold shrink-0">
+                    ${escapeHtml(step.macroGroup)}
+                  </span>
+                ` : ''}
+                <span class="font-extrabold text-xs sm:text-sm text-slate-800 break-words">
+                  ${escapeHtml(step.title)}
+                </span>
+              </div>
+              <span class="font-mono text-xs font-extrabold px-2.5 py-0.5 rounded-lg bg-white border border-slate-200 text-indigo-700 shrink-0">
+                ${step.plannedMinutes} min
+              </span>
+            </div>
+            <p class="text-xs font-medium text-slate-600 line-clamp-2 leading-relaxed">
+              ${escapeHtml(step.description)}
+            </p>
+          </div>
+        `).join('');
+      }
+
+      // -----------------------------------------------------------
+      // 11. MOTOR DE RECÁLCULO MATEMÁTICO DE TIEMPO DE CLASE
+      // -----------------------------------------------------------
+      function recalculateRemainingSteps(fromStepIndex, referenceNowMs) {
+        const remainingSteps = state.parsedSteps.slice(fromStepIndex);
+        if (remainingSteps.length === 0) return;
+
+        const plannedRemainingSeconds = remainingSteps.reduce((acc, s) => acc + s.plannedSeconds, 0);
+        const availableRealSeconds = Math.max(
+          remainingSteps.length * 5,
+          Math.round((state.mandatoryEndTimeMs - referenceNowMs) / 1000)
+        );
+
+        const factor = plannedRemainingSeconds > 0
+          ? availableRealSeconds / plannedRemainingSeconds
+          : 1.0;
+
+        state.currentScaleFactor = factor;
+
+        let accumulatedAssigned = 0;
+        for (let i = 0; i < remainingSteps.length; i++) {
+          const step = remainingSteps[i];
+          if (i === remainingSteps.length - 1) {
+            step.adjustedSeconds = Math.max(5, availableRealSeconds - accumulatedAssigned);
+          } else {
+            const scaled = Math.max(5, Math.round(step.plannedSeconds * factor));
+            step.adjustedSeconds = scaled;
+            accumulatedAssigned += scaled;
+          }
+        }
+      }
+
+      function startSessionExecution() {
+        if (state.parsedSteps.length === 0) {
+          refreshSetupPreview();
+        }
+        if (state.parsedSteps.length === 0) return;
+
+        playStartActivationSound();
+
+        const now = new Date();
+        const nowMs = now.getTime();
+        state.realStartTimeMs = nowMs;
+
+        const plannedStartDate = timeStringToDateToday(state.plannedStartStr, now);
+        let mandatoryEndDate = timeStringToDateToday(state.mandatoryEndStr, now);
+
+        if (mandatoryEndDate <= plannedStartDate) {
+          mandatoryEndDate = new Date(mandatoryEndDate.getTime() + 24 * 60 * 60 * 1000);
+        }
+
+        let targetEndMs = mandatoryEndDate.getTime();
+        const officialWindowMs = mandatoryEndDate.getTime() - plannedStartDate.getTime();
+
+        if (nowMs >= targetEndMs) {
+          targetEndMs = nowMs + officialWindowMs;
+          state.initialDelaySeconds = 0;
+        } else {
+          state.initialDelaySeconds = Math.round((nowMs - plannedStartDate.getTime()) / 1000);
+        }
+
+        state.mandatoryEndTimeMs = targetEndMs;
+        state.currentStepIndex = 0;
+        state.isRunning = true;
+        state.isPaused = false;
+        state.stepStartTimeMs = nowMs;
+        state.pausedAccumulatedMs = 0;
+        state.pauseStartedAtMs = null;
+        state.overtimeAlertFiredForStep = false;
+
+        state.parsedSteps.forEach((step, idx) => {
+          step.status = idx === 0 ? 'active' : 'pending';
+          step.spentSeconds = 0;
+        });
+
+        recalculateRemainingSteps(0, nowMs);
+        state.initialScaleFactor = state.currentScaleFactor;
+
+        dom.setupView.classList.add('hidden');
+        dom.liveView.classList.remove('hidden');
+        dom.liveView.classList.add('flex');
+        dom.thumbControlBar.classList.remove('hidden');
+
+        updateSyncHeaderInfo(now);
+        renderCurrentStepWithTransition();
+        renderLiveStepsTimeline();
+        tickSessionClock();
+
+        if (state.timerIntervalId) clearInterval(state.timerIntervalId);
+        state.timerIntervalId = setInterval(tickSessionClock, 250);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      function updateSyncHeaderInfo(realStartDateObj) {
+        const realStartHHMM = formatDateToHHMM(realStartDateObj);
+        const endDateObj = new Date(state.mandatoryEndTimeMs);
+        const mandatoryEndHHMM = formatDateToHHMM(endDateObj);
+
+        dom.liveStartComparison.textContent = `${state.plannedStartStr} / ${realStartHHMM}`;
+        dom.liveMandatoryEnd.textContent = mandatoryEndHHMM;
+
+        const scalePct = (state.currentScaleFactor * 100).toFixed(1);
+        dom.liveScaleFactor.textContent = `${scalePct}%`;
+
+        const delayMin = Math.round(state.initialDelaySeconds / 60);
+        if (Math.abs(state.initialDelaySeconds) < 30) {
+          dom.liveRecalcNotice.textContent = `Inicio puntual (${realStartHHMM}) — Tareas atómicas sincronizadas al ${scalePct}% para concluir a las ${mandatoryEndHHMM}.`;
+        } else if (state.initialDelaySeconds > 0) {
+          dom.liveRecalcNotice.textContent = `Inicio con +${delayMin} min de desfase (${realStartHHMM} vs ${state.plannedStartStr}) — Tareas ajustadas al ${scalePct}% para cerrar puntualmente a las ${mandatoryEndHHMM}.`;
+        } else {
+          dom.liveRecalcNotice.textContent = `Inicio anticipado (${Math.abs(delayMin)} min antes) — Tareas expandidas al ${scalePct}% para cerrar puntualmente a las ${mandatoryEndHHMM}.`;
+        }
+      }
+
+      // -----------------------------------------------------------
+      // 12. CRONÓMETRO DUAL, BARRA ADAPTATIVA Y ALERTA SONORA
+      // -----------------------------------------------------------
+      function getElapsedInCurrentStepSeconds(nowMs) {
+        if (!state.stepStartTimeMs) return 0;
+        const effectivePauseMs = state.isPaused && state.pauseStartedAtMs
+          ? state.pausedAccumulatedMs + (nowMs - state.pauseStartedAtMs)
+          : state.pausedAccumulatedMs;
+        return Math.max(0, (nowMs - state.stepStartTimeMs - effectivePauseMs) / 1000);
+      }
+
+      function tickSessionClock() {
+        const now = new Date();
+        const nowMs = now.getTime();
+        dom.headerWallClock.textContent = formatDateToHHMMSS(now);
+
+        if (!state.isRunning || state.parsedSteps.length === 0) return;
+
+        const currentStep = state.parsedSteps[state.currentStepIndex];
+        if (!currentStep) return;
+
+        const globalRemainingSec = Math.round((state.mandatoryEndTimeMs - nowMs) / 1000);
+        dom.liveGlobalCountdown.textContent = formatSecondsHHMMSS(globalRemainingSec);
+
+        const elapsedStepSec = getElapsedInCurrentStepSeconds(nowMs);
+        currentStep.spentSeconds = Math.round(elapsedStepSec);
+
+        const stepRemainingSec = Math.ceil(currentStep.adjustedSeconds - elapsedStepSec);
+        dom.currentBlockCountdown.textContent = formatSecondsMMSS(stepRemainingSec);
+
+        if (stepRemainingSec <= 0 && !state.overtimeAlertFiredForStep && !state.isPaused) {
+          state.overtimeAlertFiredForStep = true;
+          playSubphaseExpiredSound();
+        }
+
+        const remainingRatio = currentStep.adjustedSeconds > 0
+          ? (currentStep.adjustedSeconds - elapsedStepSec) / currentStep.adjustedSeconds
+          : 0;
+
+        const subphaseProgressPct = Math.max(0, Math.min(100, remainingRatio * 100));
+        dom.currentBlockProgressBar.style.width = `${subphaseProgressPct}%`;
+
+        const totalAdjustedSessionSec = state.parsedSteps.reduce((acc, s) => acc + s.adjustedSeconds, 0);
+        const completedStepsSec = state.parsedSteps
+          .slice(0, state.currentStepIndex)
+          .reduce((acc, s) => acc + s.adjustedSeconds, 0);
+        const currentClampedSec = Math.min(currentStep.adjustedSeconds, elapsedStepSec);
+        const globalProgressPct = totalAdjustedSessionSec > 0
+          ? Math.min(100, Math.max(0, ((completedStepsSec + currentClampedSec) / totalAdjustedSessionSec) * 100))
+          : 0;
+
+        dom.globalProgressBar.style.width = `${globalProgressPct.toFixed(1)}%`;
+        dom.globalProgressBar.setAttribute('aria-valuenow', String(Math.round(globalProgressPct)));
+        dom.headerProgressPct.textContent = `${Math.round(globalProgressPct)}% avance`;
+
+        applyAdaptiveVisualState(remainingRatio, stepRemainingSec);
+      }
+
+      function applyAdaptiveVisualState(remainingRatio, stepRemainingSec) {
+        dom.globalProgressBar.classList.remove('bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-indigo-500', 'bar-overtime-coral');
+        dom.currentBlockProgressBar.classList.remove('bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-indigo-500');
+        dom.statusIndicatorDot.classList.remove('bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-indigo-600');
+        dom.currentStepCard.classList.remove('card-overtime-coral');
+
+        if (state.isPaused) {
+          dom.headerStatusLabel.textContent = 'Sesión en Pausa';
+          dom.currentStepStateBadge.textContent = 'En pausa';
+          dom.currentStepStateBadge.className = 'px-2.5 py-1 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold';
+          dom.statusIndicatorDot.classList.add('bg-amber-500');
+          dom.globalProgressBar.classList.add('bg-amber-500');
+          dom.currentBlockProgressBar.classList.add('bg-amber-500');
+          dom.overtimeBanner.classList.add('hidden');
+          return;
+        }
+
+        if (stepRemainingSec < 0) {
+          dom.globalProgressBar.classList.add('bg-rose-500', 'bar-overtime-coral');
+          dom.currentBlockProgressBar.classList.add('bg-rose-500');
+          dom.statusIndicatorDot.classList.add('bg-rose-500');
+          dom.headerStatusLabel.textContent = 'Tiempo de subfase excedido';
+          dom.currentStepStateBadge.textContent = 'Tiempo excedido';
+          dom.currentStepStateBadge.className = 'px-2.5 py-1 rounded-xl bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold';
+          dom.currentBlockCountdown.className = 'font-mono text-5xl sm:text-6xl font-extrabold tracking-tight tabular-nums leading-none mt-1.5 text-rose-600 transition-colors';
+          dom.currentTimerBox.className = 'md:col-span-5 rounded-2xl bg-rose-50/70 border border-rose-200 p-4 text-center shadow-inner transition-colors';
+          dom.currentStepCard.classList.add('card-overtime-coral');
+
+          dom.overtimeBanner.classList.remove('hidden');
+          dom.overtimeElapsedBadge.textContent = `+${formatSecondsMMSS(Math.abs(stepRemainingSec))}`;
+        } else if (remainingRatio <= 0.25) {
+          dom.globalProgressBar.classList.add('bg-amber-500');
+          dom.currentBlockProgressBar.classList.add('bg-amber-500');
+          dom.statusIndicatorDot.classList.add('bg-amber-500');
+          dom.headerStatusLabel.textContent = 'Último 25% de la subfase';
+          dom.currentStepStateBadge.textContent = 'Último 25%';
+          dom.currentStepStateBadge.className = 'px-2.5 py-1 rounded-xl bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold';
+          dom.currentBlockCountdown.className = 'font-mono text-5xl sm:text-6xl font-extrabold tracking-tight tabular-nums leading-none mt-1.5 text-amber-600 transition-colors';
+          dom.currentTimerBox.className = 'md:col-span-5 rounded-2xl bg-amber-50/60 border border-amber-200 p-4 text-center shadow-inner transition-colors';
+          dom.overtimeBanner.classList.add('hidden');
+        } else {
+          dom.globalProgressBar.classList.add('bg-emerald-500');
+          dom.currentBlockProgressBar.classList.add('bg-emerald-500');
+          dom.statusIndicatorDot.classList.add('bg-emerald-500');
+          dom.headerStatusLabel.textContent = 'En tiempo programado';
+          dom.currentStepStateBadge.textContent = 'En tiempo';
+          dom.currentStepStateBadge.className = 'px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold';
+          dom.currentBlockCountdown.className = 'font-mono text-5xl sm:text-6xl font-extrabold tracking-tight tabular-nums leading-none mt-1.5 text-emerald-600 transition-colors';
+          dom.currentTimerBox.className = 'md:col-span-5 rounded-2xl bg-slate-50 border border-slate-200/90 p-4 text-center shadow-inner transition-colors';
+          dom.overtimeBanner.classList.add('hidden');
+        }
+      }
+
+      // -----------------------------------------------------------
+      // 13. RENDERIZADO CON TRANSICIÓN FLUIDA DE LA TAREA ATÓMICA
+      // -----------------------------------------------------------
+      function renderCurrentStepWithTransition() {
+        const total = state.parsedSteps.length;
+        const step = state.parsedSteps[state.currentStepIndex];
+        if (!step) return;
+
+        dom.currentStepCard.classList.remove('step-card-animate');
+        void dom.currentStepCard.offsetWidth;
+        dom.currentStepCard.classList.add('step-card-animate');
+
+        dom.currentMomentBadge.textContent = step.moment;
+        dom.currentMomentBadge.className = `px-3 py-1 rounded-xl ${getMomentBadgeStyle(step.moment)} text-xs font-extrabold uppercase tracking-wider shadow-sm`;
+
+        if (step.macroGroup) {
+          dom.currentMacroGroupBadge.textContent = step.macroGroup;
+          dom.currentMacroGroupBadge.classList.remove('hidden');
+        } else {
+          dom.currentMacroGroupBadge.classList.add('hidden');
+        }
+
+        dom.currentStepIndexLabel.textContent = `Tarea ${state.currentStepIndex + 1} de ${total}`;
+        dom.currentSubphaseTitle.textContent = step.title;
+        dom.currentSubphaseSubtitle.textContent = step.subtitle || `Tarea atómica de ${step.moment}`;
+        dom.currentPlannedDurationLabel.textContent = `Plan: ${formatSecondsMMSS(step.plannedSeconds)} min`;
+        dom.currentAdjustedDurationLabel.textContent = `Ajustado: ${formatSecondsMMSS(step.adjustedSeconds)} min`;
+        dom.currentStepDescription.textContent = step.description;
+
+        const nextStep = state.parsedSteps[state.currentStepIndex + 1];
+        if (nextStep) {
+          dom.nextStepPreviewTitle.textContent = `${nextStep.moment} — ${nextStep.title}`;
+          dom.nextStepPreviewDuration.textContent = `Ajustado: ${formatSecondsMMSS(nextStep.adjustedSeconds)}`;
+          dom.btnNextStep.textContent = 'Siguiente Paso';
+        } else {
+          dom.nextStepPreviewTitle.textContent = 'Cierre definitivo de la sesión';
+          dom.nextStepPreviewDuration.textContent = `Meta: ${dom.liveMandatoryEnd.textContent}`;
+          dom.btnNextStep.textContent = 'Finalizar Sesión';
+        }
+      }
+
+      function renderLiveStepsTimeline() {
+        dom.liveStepsTimeline.innerHTML = state.parsedSteps.map((step, idx) => {
+          const isCurrent = idx === state.currentStepIndex;
+          const isCompleted = idx < state.currentStepIndex;
+
+          const rowStyle = isCurrent
+            ? 'border-2 border-indigo-500 bg-indigo-50/50 shadow-xs'
+            : (isCompleted ? 'border border-slate-200 bg-slate-50 opacity-75' : 'border border-slate-200 bg-white');
+
+          const statusTag = isCompleted
+            ? 'Completado'
+            : (isCurrent ? 'En curso' : 'Pendiente');
+
+          const statusBadgeStyle = isCompleted
+            ? 'bg-emerald-100 text-emerald-800'
+            : (isCurrent ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600');
+
+          return `
+            <div class="rounded-xl ${rowStyle} p-3 flex items-center justify-between gap-2 transition-all">
+              <div class="flex flex-wrap items-center gap-2 min-w-0">
+                <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${statusBadgeStyle} shrink-0">
+                  ${statusTag}
+                </span>
+                <span class="text-[11px] font-bold uppercase text-slate-500 shrink-0">
+                  [${escapeHtml(step.moment)}]
+                </span>
+                ${step.macroGroup ? `
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-100/80 text-indigo-700 shrink-0">
+                    ${escapeHtml(step.macroGroup)}
+                  </span>
+                ` : ''}
+                <span class="text-xs sm:text-sm font-bold break-words ${isCompleted ? 'line-through text-slate-400' : 'text-slate-800'}">
+                  ${idx + 1}. ${escapeHtml(step.title)}
+                </span>
+              </div>
+              <div class="flex items-center gap-2 shrink-0 font-mono text-xs font-bold tabular-nums">
+                <span class="text-slate-400 line-through hidden sm:inline">${formatSecondsMMSS(step.plannedSeconds)}</span>
+                <span class="px-2.5 py-0.5 rounded-lg bg-white border border-slate-200 text-indigo-700 font-extrabold">
+                  ${formatSecondsMMSS(step.adjustedSeconds)}
+                </span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // -----------------------------------------------------------
+      // 14. CONTROLES TÁCTILES DOCENTES
+      // -----------------------------------------------------------
+      function advanceToNextStep() {
+        if (!state.isRunning) return;
+
+        const now = new Date();
+        const nowMs = now.getTime();
+        const currentStep = state.parsedSteps[state.currentStepIndex];
+        if (currentStep) {
+          currentStep.status = 'completed';
+          currentStep.spentSeconds = Math.round(getElapsedInCurrentStepSeconds(nowMs));
+        }
+
+        if (state.currentStepIndex >= state.parsedSteps.length - 1) {
+          playStepTransitionSound();
+          finishSessionSummary();
+          return;
+        }
+
+        playStepTransitionSound();
+
+        state.currentStepIndex += 1;
+        state.parsedSteps[state.currentStepIndex].status = 'active';
+        state.stepStartTimeMs = nowMs;
+        state.pausedAccumulatedMs = 0;
+        state.pauseStartedAtMs = null;
+        state.isPaused = false;
+        state.overtimeAlertFiredForStep = false;
+        dom.btnPauseResume.textContent = 'Pausar';
+
+        recalculateRemainingSteps(state.currentStepIndex, nowMs);
+
+        const scalePct = (state.currentScaleFactor * 100).toFixed(1);
+        dom.liveScaleFactor.textContent = `${scalePct}%`;
+        const endHHMM = formatDateToHHMM(new Date(state.mandatoryEndTimeMs));
+        dom.liveRecalcNotice.textContent = `Tarea ${state.currentStepIndex + 1} activa — Tareas atómicas restantes reajustadas al ${scalePct}% para concluir puntualmente a las ${endHHMM}.`;
+
+        renderCurrentStepWithTransition();
+        renderLiveStepsTimeline();
+        tickSessionClock();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      function togglePauseResume() {
+        if (!state.isRunning) return;
+        const nowMs = Date.now();
+
+        if (!state.isPaused) {
+          state.isPaused = true;
+          state.pauseStartedAtMs = nowMs;
+          dom.btnPauseResume.textContent = 'Reanudar';
+          dom.btnPauseResume.className = 'col-span-4 min-h-[54px] rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-sm active:scale-[0.98] transition-all';
+        } else {
+          state.isPaused = false;
+          if (state.pauseStartedAtMs) {
+            state.pausedAccumulatedMs += (nowMs - state.pauseStartedAtMs);
+            state.pauseStartedAtMs = null;
+          }
+          dom.btnPauseResume.textContent = 'Pausar';
+          dom.btnPauseResume.className = 'col-span-4 min-h-[54px] rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-sm active:scale-[0.98] transition-all';
+        }
+        tickSessionClock();
+      }
+
+      function finishSessionSummary() {
+        state.isRunning = false;
+        if (state.timerIntervalId) {
+          clearInterval(state.timerIntervalId);
+          state.timerIntervalId = null;
+        }
+        dom.globalProgressBar.style.width = '100%';
+        dom.headerProgressPct.textContent = '100% avance';
+        dom.headerStatusLabel.textContent = 'Sesión Concluida';
+        dom.overtimeBanner.classList.add('hidden');
+        dom.currentStepCard.classList.remove('card-overtime-coral');
+
+        const finishTimeStr = formatDateToHHMM(new Date());
+        openModal(
+          'Sesión de Aprendizaje Finalizada',
+          `Has completado todas las tareas atómicas de la Secuencia Didáctica a las ${finishTimeStr} (Meta programada: ${dom.liveMandatoryEnd.textContent}). ¿Deseas volver al panel de configuración?`,
+          'Volver al Inicio',
+          () => {
+            returnToSetupView();
+          }
+        );
+      }
+
+      function returnToSetupView() {
+        state.isRunning = false;
+        state.isPaused = false;
+        if (state.timerIntervalId) {
+          clearInterval(state.timerIntervalId);
+          state.timerIntervalId = null;
+        }
+        dom.liveView.classList.add('hidden');
+        dom.liveView.classList.remove('flex');
+        dom.thumbControlBar.classList.add('hidden');
+        dom.setupView.classList.remove('hidden');
+
+        dom.globalProgressBar.style.width = '0%';
+        dom.globalProgressBar.className = 'h-full w-0 rounded-full transition-all duration-500 ease-out bg-emerald-500';
+        dom.statusIndicatorDot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-indigo-600 ring-4 ring-indigo-100 shrink-0 transition-colors';
+        dom.headerStatusLabel.textContent = 'Configuración de Sesión';
+        dom.headerProgressPct.textContent = '0% avance';
+        dom.btnPauseResume.textContent = 'Pausar';
+        dom.btnPauseResume.className = 'col-span-4 min-h-[54px] rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-sm active:scale-[0.98] transition-all';
+
+        refreshSetupPreview();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      // -----------------------------------------------------------
+      // 15. MODAL Y CARGA DE ARCHIVOS
+      // -----------------------------------------------------------
+      let modalConfirmCallback = null;
+
+      function openModal(title, message, confirmLabel, onConfirm) {
+        dom.modalTitle.textContent = title;
+        dom.modalMessage.textContent = message;
+        dom.modalConfirmBtn.textContent = confirmLabel || 'Confirmar';
+        modalConfirmCallback = onConfirm;
+        dom.modalOverlay.classList.remove('hidden');
+        dom.modalOverlay.classList.add('flex');
+      }
+
+      function closeModal() {
+        dom.modalOverlay.classList.add('hidden');
+        dom.modalOverlay.classList.remove('flex');
+        modalConfirmCallback = null;
+      }
+
+      async function handleFileSelection(file) {
+        if (!file) return;
+
+        const fileName = file.name || 'documento';
+        const lowerName = fileName.toLowerCase();
+
+        dom.fileStatusBox.classList.remove('hidden');
+        dom.loadedFileName.textContent = `Procesando: ${fileName}...`;
+        dom.fileProcessMethodBadge.textContent = 'Leyendo';
+
+        try {
+          if (
+            lowerName.endsWith('.docx') ||
+            lowerName.endsWith('.doc') ||
+            file.type.includes('word') ||
+            file.type.includes('officedocument')
+          ) {
+            const result = await extractTextFromWordFile(file);
+            dom.sessionRawTextarea.value = result.text;
+            dom.loadedFileName.textContent = `Archivo Word: ${fileName}`;
+            dom.fileProcessMethodBadge.textContent = result.method;
+            refreshSetupPreview();
+          } else {
+            const textContent = await file.text();
+            if (lowerName.endsWith('.html') || lowerName.endsWith('.htm')) {
+              dom.sessionRawTextarea.value = convertWordHtmlToSessionText(textContent);
+              dom.fileProcessMethodBadge.textContent = 'HTML Estructurado';
+            } else {
+              dom.sessionRawTextarea.value = textContent;
+              dom.fileProcessMethodBadge.textContent = 'Texto Directo';
+            }
+            dom.loadedFileName.textContent = `Archivo: ${fileName}`;
+            refreshSetupPreview();
+          }
+        } catch (_) {
+          dom.loadedFileName.textContent = `No se pudo leer: ${fileName}`;
+          dom.fileProcessMethodBadge.textContent = 'Revisar formato';
+        }
+      }
+
+      // -----------------------------------------------------------
+      // 16. INICIALIZACIÓN DE EVENTOS
+      // -----------------------------------------------------------
+      function initEvents() {
+        setInterval(() => {
+          dom.headerWallClock.textContent = formatDateToHHMMSS(new Date());
+        }, 1000);
+        dom.headerWallClock.textContent = formatDateToHHMMSS(new Date());
+
+        const savedKey = localStorage.getItem('aulaflow_llm_key');
+        if (savedKey) dom.aiApiKeyInput.value = savedKey;
+
+        dom.btnToggleAudio.addEventListener('click', () => {
+          state.audioEnabled = !state.audioEnabled;
+          if (state.audioEnabled) {
+            dom.audioStateLabel.textContent = 'Audio ON';
+            dom.btnToggleAudio.className = 'px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-[11px] transition-colors flex items-center gap-1';
+            playStartActivationSound();
+          } else {
+            dom.audioStateLabel.textContent = 'Audio OFF';
+            dom.btnToggleAudio.className = 'px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 font-bold text-[11px] transition-colors flex items-center gap-1';
+          }
+        });
+
+        dom.plannedStartInput.addEventListener('input', refreshSetupPreview);
+        dom.mandatoryEndInput.addEventListener('input', refreshSetupPreview);
+        dom.sessionRawTextarea.addEventListener('input', refreshSetupPreview);
+
+        dom.btnReconcileToWindow.addEventListener('click', () => {
+          const officialSec = getOfficialWindowSeconds(state.plannedStartStr, state.mandatoryEndStr);
+          const officialMin = Math.round(officialSec / 60) || 90;
+          reconcileAtomicStepsToTargetMinutes(officialMin);
+          dom.aiStatusMessage.textContent = `Tiempos de las subfases reconciliados proporcionalmente al tiempo neto de la sesión (${officialMin} minutos).`;
+          dom.aiStatusMessage.className = 'text-[11px] font-bold text-emerald-700 mt-1.5';
+        });
+
+        dom.btnSyncCurrentWindow.addEventListener('click', () => {
+          const now = new Date();
+          const totalPlannedSec = state.parsedSteps.reduce((acc, s) => acc + s.plannedSeconds, 0);
+          const durationMinutes = totalPlannedSec > 0 ? Math.round(totalPlannedSec / 60) : 90;
+          const end = new Date(now.getTime() + durationMinutes * 60 * 1000);
+          dom.plannedStartInput.value = formatDateToHHMM(now);
+          dom.mandatoryEndInput.value = formatDateToHHMM(end);
+          refreshSetupPreview();
+        });
+
+        dom.btnUploadWordDirect.addEventListener('click', () => {
+          dom.wordFileInput.value = '';
+          dom.wordFileInput.click();
+        });
+        dom.wordFileInput.addEventListener('change', (e) => {
+          if (e.target.files && e.target.files[0]) handleFileSelection(e.target.files[0]);
+        });
+
+        dom.btnBrowseAnyFile.addEventListener('click', () => {
+          dom.generalFileInput.value = '';
+          dom.generalFileInput.click();
+        });
+        dom.generalFileInput.addEventListener('change', (e) => {
+          if (e.target.files && e.target.files[0]) handleFileSelection(e.target.files[0]);
+        });
+
+        dom.btnPasteClipboard.addEventListener('click', async () => {
+          try {
+            if (navigator.clipboard && navigator.clipboard.readText) {
+              const clipText = await navigator.clipboard.readText();
+              if (clipText && clipText.trim()) {
+                dom.sessionRawTextarea.value = clipText.trim();
+                dom.fileStatusBox.classList.remove('hidden');
+                dom.loadedFileName.textContent = 'Texto pegado desde el portapapeles';
+                dom.fileProcessMethodBadge.textContent = 'Portapapeles';
+                refreshSetupPreview();
+                return;
+              }
+            }
+            dom.sessionRawTextarea.focus();
+            openModal(
+              'Pegar desde Portapapeles',
+              'Mantén presionado dentro del recuadro de texto y selecciona "Pegar" (o pulsa Ctrl+V) para insertar el contenido copiado.',
+              'Entendido',
+              null
+            );
+          } catch (_) {
+            dom.sessionRawTextarea.focus();
+          }
+        });
+
+        dom.btnToggleAiConfig.addEventListener('click', () => {
+          dom.aiConfigPanel.classList.toggle('hidden');
+        });
+        dom.btnRunAiSemanticParse.addEventListener('click', runSemanticAiParser);
+
+        dom.btnToggleManualForm.addEventListener('click', () => {
+          const isHidden = dom.manualStepForm.classList.contains('hidden');
+          dom.manualStepForm.classList.toggle('hidden');
+          dom.btnToggleManualForm.textContent = isHidden ? 'Ocultar Creador' : 'Abrir Creador Rápido';
+        });
+
+        dom.btnAddManualStep.addEventListener('click', () => {
+          const moment = dom.manualMomentSelect.value || 'DESARROLLO';
+          const title = (dom.manualSubphaseInput.value || '').trim() || 'Actividad Pedagógica';
+          const mins = Math.max(1, parseInt(dom.manualMinutesInput.value, 10) || 5);
+          const desc = (dom.manualDescInput.value || '').trim() || 'Ejecutar consigna metodológica del bloque.';
+
+          const currentRaw = dom.sessionRawTextarea.value.trim();
+          const addition = `\n- ${moment}: ${title} (${mins} min): ${desc}`;
+          dom.sessionRawTextarea.value = currentRaw + addition;
+          dom.manualSubphaseInput.value = '';
+          dom.manualDescInput.value = '';
+          refreshSetupPreview();
+        });
+
+        dom.dropZone.addEventListener('click', () => {
+          dom.generalFileInput.value = '';
+          dom.generalFileInput.click();
+        });
+        dom.dropZone.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          dom.dropZone.classList.add('bg-indigo-100', 'border-indigo-600');
+        });
+        dom.dropZone.addEventListener('dragleave', () => {
+          dom.dropZone.classList.remove('bg-indigo-100', 'border-indigo-600');
+        });
+        dom.dropZone.addEventListener('drop', (e) => {
+          e.preventDefault();
+          dom.dropZone.classList.remove('bg-indigo-100', 'border-indigo-600');
+          if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+            handleFileSelection(e.dataTransfer.files[0]);
+          }
+        });
+
+        dom.btnLoadSampleSession.addEventListener('click', () => {
+          dom.sessionRawTextarea.value = DEFAULT_SESSION_TEXT;
+          dom.fileStatusBox.classList.add('hidden');
+          refreshSetupPreview();
+        });
+
+        dom.btnClearSessionText.addEventListener('click', () => {
+          dom.sessionRawTextarea.value = '';
+          dom.fileStatusBox.classList.add('hidden');
+          refreshSetupPreview();
+        });
+
+        dom.btnStartSession.addEventListener('click', startSessionExecution);
+        dom.btnNextStep.addEventListener('click', advanceToNextStep);
+        dom.btnPauseResume.addEventListener('click', togglePauseResume);
+
+        dom.btnResetSession.addEventListener('click', () => {
+          openModal(
+            'Reiniciar Sesión Actual',
+            '¿Deseas reiniciar la secuencia de tareas atómicas desde el Paso 1 recalculando los tiempos con la hora actual?',
+            'Reiniciar Ahora',
+            () => {
+              startSessionExecution();
+            }
+          );
+        });
+
+        dom.btnEditSessionConfig.addEventListener('click', () => {
+          openModal(
+            'Volver a Configuración',
+            'Se detendrá el cronómetro en curso para editar los datos o cargar otro documento. ¿Deseas continuar?',
+            'Ir a Configuración',
+            () => {
+              returnToSetupView();
+            }
+          );
+        });
+
+        dom.modalCancelBtn.addEventListener('click', closeModal);
+        dom.modalConfirmBtn.addEventListener('click', () => {
+          const cb = modalConfirmCallback;
+          closeModal();
+          if (typeof cb === 'function') cb();
+        });
+      }
+
+      dom.sessionRawTextarea.value = DEFAULT_SESSION_TEXT;
+      initEvents();
+      refreshSetupPreview();
+    })();
+  </script>
+</body>
+</html>
