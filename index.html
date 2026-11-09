@@ -226,7 +226,7 @@
             <input
               type="time"
               id="plannedStartInput"
-              value="10:30"
+              value="08:40"
               class="w-full h-11 px-3 rounded-xl border border-slate-300 text-lg font-mono font-extrabold bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
           </div>
@@ -238,7 +238,7 @@
             <input
               type="time"
               id="mandatoryEndInput"
-              value="12:00"
+              value="10:10"
               class="w-full h-11 px-3 rounded-xl border border-slate-300 text-lg font-mono font-extrabold bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
           </div>
@@ -790,10 +790,10 @@
       const DEFAULT_SESSION_TEXT = `DATOS INFORMATIVOS DE LA SESIÓN
 Institución Educativa: Politécnico Nacional
 Área Curricular: Ciencia, Tecnología y Ambiente (90 min)
-Docente Responsable: Equipo Docente
+Horario Programado: 08:40 a 10:10 (90 min netos)
 Propósito General: Sustentar con evidencia experimental la calidad del agua.
 
-SECUENCIA DIDÁCTICA
+SECUENCIA DE APRENDIZAJE
 MOMENTO | ESTRATEGIAS Y PROCESOS DIDÁCTICOS | TIEMPO
 
 I. INICIO (15 min)
@@ -815,9 +815,10 @@ III. CIERRE (15 min)
 CIERRE | Evaluación y Metacognición (Reflexión sobre el aprendizaje) | Resolver el ticket de salida individual y dialogar sobre: ¿Qué evidencia resultó clave hoy?, ¿Qué estrategia nos ayudó a superar dificultades? | 10 min
 CIERRE | Trabajo de extensión (Actividad de investigación domiciliaria) | Indicar a los estudiantes que registren en su cuaderno de campo dos fuentes de agua de su localidad y propongan un protocolo básico de cuidado. | 5 min
 
-MATRIZ DE EVALUACIÓN Y METADATOS FINALES
+MATRIZ DE EVALUACIÓN Y BIBLIOGRAFÍA
 Cuadro de Áreas Curriculares: Ciencia y Tecnología (90 min)
 Criterios de Evaluación e Instrumento: Lista de cotejo (15 min)
+Bibliografía: Ministerio de Educación (MINEDU) - Currículo Nacional
 Resumen Institucional Repetido - Inicio (15 min) / Desarrollo (60 min) / Cierre (15 min)`;
 
       // -----------------------------------------------------------
@@ -835,8 +836,8 @@ Resumen Institucional Repetido - Inicio (15 min) / Desarrollo (60 min) / Cierre 
           lastStepTitle: '',
           cutReason: ''
         },
-        plannedStartStr: '10:30',
-        mandatoryEndStr: '12:00',
+        plannedStartStr: '08:40',
+        mandatoryEndStr: '10:10',
         isRunning: false,
         isPaused: false,
         currentStepIndex: 0,
@@ -1080,17 +1081,19 @@ Resumen Institucional Repetido - Inicio (15 min) / Desarrollo (60 min) / Cierre 
         let startIndex = 0;
         let foundExplicitHeader = false;
 
-        // 1. Buscar el inicio explícito de "SECUENCIA DIDÁCTICA"
+        const sequenceHeaderRegex = /^(?:#+\s*|\*\*|__|[IVX]+[\.\)]\s*|\d+[\.\)]\s*)?(?:SECUENCIA\s+(?:DE\s+APRENDIZAJE|DID[AÁ]CTICA|METODOL[OÓ]GICA)|DESARROLLO\s+DE\s+LA\s+SESI[OÓ]N|MOMENTOS\s+DE\s+LA\s+SESI[OÓ]N)\b/i;
+
+        // 1. Buscar el inicio explícito de "SECUENCIA DE APRENDIZAJE" / "SECUENCIA DIDÁCTICA"
         for (let i = 0; i < allLines.length; i++) {
           const clean = allLines[i].trim();
-          if (/^(?:#+\s*|\*\*|__|[IVX]+[\.\)]\s*|\d+[\.\)]\s*)?SECUENCIA\s+DID[AÁ]CTICA\b/i.test(clean)) {
+          if (sequenceHeaderRegex.test(clean)) {
             startIndex = i + 1;
             foundExplicitHeader = true;
             break;
           }
         }
 
-        // Si no hay título explícito "SECUENCIA DIDÁCTICA", buscar la primera ocurrencia de "Lineamientos preliminares" o el encabezado "INICIO"
+        // Si no hay título explícito "SECUENCIA DE APRENDIZAJE" / "SECUENCIA DIDÁCTICA", buscar "Lineamientos preliminares" o el primer "INICIO"
         if (!foundExplicitHeader) {
           for (let i = 0; i < allLines.length; i++) {
             const clean = allLines[i].trim();
@@ -1121,10 +1124,10 @@ Resumen Institucional Repetido - Inicio (15 min) / Desarrollo (60 min) / Cierre 
             continue;
           }
 
-          // Si aparece un nuevo encabezado repetido de "SECUENCIA DIDÁCTICA" después de haber iniciado, cortar
-          if (i > startIndex && /^(?:#+\s*|\*\*|__|[IVX]+[\.\)]\s*|\d+[\.\)]\s*)?SECUENCIA\s+DID[AÁ]CTICA\b/i.test(clean)) {
+          // Si aparece un nuevo encabezado repetido de "SECUENCIA DE APRENDIZAJE" / "SECUENCIA DIDÁCTICA" después de haber iniciado, cortar
+          if (i > startIndex && sequenceHeaderRegex.test(clean)) {
             cutAtLineIndex = i;
-            cutReason = 'Repetición posterior de encabezado SECUENCIA DIDÁCTICA ignorada';
+            cutReason = 'Repetición posterior de encabezado de Secuencia ignorada';
             break;
           }
 
@@ -1596,7 +1599,7 @@ Resumen Institucional Repetido - Inicio (15 min) / Desarrollo (60 min) / Cierre 
             continue;
           }
 
-          // Tokenizar línea con soporte para paréntesis múltiples
+          // Tokenizar línea con soporte para paréntesis múltiples y columnas
           const parsedLine = parseTimedLineFlexible(rawLine);
 
           if (parsedLine && parsedLine.title && !isNaN(parsedLine.plannedMinutes) && parsedLine.plannedMinutes > 0) {
@@ -1638,14 +1641,39 @@ Resumen Institucional Repetido - Inicio (15 min) / Desarrollo (60 min) / Cierre 
               isMomentCandidate: false,
               explicitMacroGroup: ''
             });
-          } else if (candidateNodes.length > 0) {
-            const prev = candidateNodes[candidateNodes.length - 1];
-            const extraText = cleanLine.replace(/^[-*•+]\s+/, '');
-            prev.description = prev.description
-              ? `${prev.description}\n${extraText}`
-              : extraText;
+          } else {
+            // Detectar si es una subfase pedagógica sin tiempo individual (cuando los tiempos se indican por bloques o en celdas separadas)
+            const untimedSubphase = parseUntimedSubphaseLine(rawLine);
+            if (untimedSubphase) {
+              const inlineMoment = extractInlineMoment(untimedSubphase.title);
+              let cleanStepTitle = untimedSubphase.title;
+              if (inlineMoment) {
+                currentMoment = inlineMoment.moment;
+                cleanStepTitle = inlineMoment.cleanTitle;
+              }
+              candidateNodes.push({
+                moment: currentMoment,
+                indentLen: untimedSubphase.indentLen,
+                bulletSymbol: untimedSubphase.bulletSymbol,
+                title: cleanStepTitle,
+                plannedMinutes: 0,
+                description: untimedSubphase.description,
+                isMomentCandidate: false,
+                isUntimedSubphase: true,
+                explicitMacroGroup: ''
+              });
+            } else if (candidateNodes.length > 0) {
+              const prev = candidateNodes[candidateNodes.length - 1];
+              const extraText = cleanLine.replace(/^[-*•+]\s+/, '');
+              prev.description = prev.description
+                ? `${prev.description}\n${extraText}`
+                : extraText;
+            }
           }
         }
+
+        // Distribuir de forma lógica y secuencial los tiempos de bloques contenedores o momentos hacia subfases sin tiempo individual
+        distributeBlockTimesToUntimedSubphases(candidateNodes);
 
         // Resolver árbol jerárquico y filtrar cualquier repetición accidental de bloques
         const atomicSteps = deduplicateAndFinalizeAtomicSteps(resolveAtomicTasksFromCandidates(candidateNodes));
@@ -1659,8 +1687,121 @@ Resumen Institucional Repetido - Inicio (15 min) / Desarrollo (60 min) / Cierre 
       }
 
       /**
+       * Detecta si una línea sin tiempo explícito corresponde a una subfase pedagógica atómica
+       * (para sesiones tabulares donde el tiempo solo fue declarado a nivel de bloque o momento).
+       */
+      function parseUntimedSubphaseLine(rawLine) {
+        if (!rawLine || !rawLine.trim()) return null;
+        const prefixMatch = rawLine.match(/^(\s*)(?:([-*•+]|\d+(?:\.\d+)*[\.\)]|[a-zA-Z][\.\)])\s+)?(.*)$/);
+        if (!prefixMatch) return null;
+
+        const indentLen = (prefixMatch[1] || '').length;
+        const bulletSymbol = (prefixMatch[2] || '').trim();
+        const body = (prefixMatch[3] || '').trim();
+        if (!body || isAdministrativeMetadataLine(body) || isPostOrMetadataSectionHeader(body)) return null;
+
+        const split = findTitleDescriptionSplit(body);
+        const candidateTitle = cleanMarkdownEmphasis(split.title);
+        if (!candidateTitle || candidateTitle.length < 3 || candidateTitle.length > 80) return null;
+        if (/^[¿?¡!]/.test(candidateTitle)) return null;
+
+        const canonicalSubphaseRegex = /^(?:(?:INICIO|DESARROLLO|CIERRE)\s*[:\-–—\/]\s*)?(?:LINEAMIENTOS\s+PRELIMINARES|ACTIVIDADES\s+PERMANENTES|SALUDO(?:\s+Y\s+BIENVENIDA)?|MOTIVACI[OÓ]N|DESPERTAR\s+EL\s+INTER[EÉ]S|SABERES\s+PREVIOS|RECUPERACI[OÓ]N\s+DE\s+SABERES|PROBLEMATIZACI[OÓ]N|CONFLICTO\s+COGNITIVO|PROP[OÓ]SITO(?:\s+Y\s+ORGANIZACI[OÓ]N)?|ORGANIZACI[OÓ]N|ACUERDOS\s+DE\s+CONVIVENCIA|GESTI[OÓ]N\s+Y\s+ACOMPA[ÑN]AMIENTO|PROCESOS?\s+(?:DE\s+APRENDIZAJE|DID[AÁ]CTICOS?|COGNITIVOS?|PEDAG[OÓ]GICOS?)|RECEPCI[OÓ]N(?:\s+DE\s+LA\s+INFORMACI[OÓ]N)?|OBSERVACI[OÓ]N(?:\s+SELECTIVA)?|DESCOMPOSICI[OÓ]N(?:\s+DEL\s+FEN[OÓ]MENO)?|AN[AÁ]LISIS(?:\s+Y\s+CONSTRUCCI[OÓ]N|\s+DE\s+LA\s+INFORMACI[OÓ]N)?|INTERRELACI[OÓ]N(?:\s+DE\s+VARIABLES)?|SISTEMATIZACI[OÓ]N(?:\s+DE\s+HALLAZGOS)?|PLANTEAMIENTO\s+DE\s+CONCLUSIONES|CONCLUSIONES|APLICACI[OÓ]N(?:\s+Y\s+TRANSFERENCIA)?|TRANSFERENCIA(?:\s+GUIADA|\s+DEL\s+APRENDIZAJE)?|PR[AÁ]CTICA\s+(?:DIRIGIDA|AUT[OÓ]NOMA|GUIADA)|RETROALIMENTACI[OÓ]N|EVALUACI[OÓ]N(?:\s+Y\s+METACOGNICI[OÓ]N)?|COMPROBACI[OÓ]N(?:\s+DE\s+APRENDIZAJES)?|METACOGNICI[OÓ]N|REFLEXI[OÓ]N(?:\s+SOBRE\s+EL\s+APRENDIZAJE)?|(?:TRABAJO|ACTIVIDAD|TAREA)\s+DE\s+EXTENSI[OÓ]N|EXTENSI[OÓ]N)\b/i;
+
+        if (canonicalSubphaseRegex.test(candidateTitle)) {
+          return {
+            indentLen,
+            bulletSymbol,
+            title: candidateTitle,
+            description: split.description
+          };
+        }
+
+        // También aceptar viñetas explícitas con formato "Título de Subfase: Descripción pedagógica"
+        if (bulletSymbol && split.description && split.description.length >= 10 && /^[A-ZÁÉÍÓÚÑ]/.test(candidateTitle)) {
+          return {
+            indentLen,
+            bulletSymbol,
+            title: candidateTitle,
+            description: split.description
+          };
+        }
+
+        return null;
+      }
+
+      function getPedagogicalWeightForTitle(title) {
+        const upper = String(title || '').toUpperCase();
+        if (upper.includes('LINEAMIENTOS') || upper.includes('SALUDO') || upper.includes('CONVIVENCIA')) return 0.65;
+        if (upper.includes('PROPÓSITO') || upper.includes('PROPOSITO')) return 0.75;
+        if (upper.includes('MOTIVACIÓN') || upper.includes('MOTIVACION') || upper.includes('SABERES') || upper.includes('PROBLEMATIZACIÓN') || upper.includes('PROBLEMATIZACION')) return 1.1;
+        if (upper.includes('ANÁLISIS') || upper.includes('ANALISIS') || upper.includes('INTERRELACIÓN') || upper.includes('SISTEMATIZACIÓN') || upper.includes('APLICACIÓN') || upper.includes('TRANSFERENCIA')) return 1.25;
+        if (upper.includes('EXTENSIÓN') || upper.includes('EXTENSION')) return 0.85;
+        return 1.0;
+      }
+
+      function distributeMinutesLogically(nodesList, totalBudgetMinutes) {
+        if (!Array.isArray(nodesList) || nodesList.length === 0) return;
+        const budget = Math.max(nodesList.length, Math.round(totalBudgetMinutes));
+        const weights = nodesList.map(n => getPedagogicalWeightForTitle(n.title));
+        const weightSum = weights.reduce((a, b) => a + b, 0) || nodesList.length;
+
+        let assignedSum = 0;
+        nodesList.forEach((node, idx) => {
+          if (idx === nodesList.length - 1) {
+            node.plannedMinutes = Math.max(1, budget - assignedSum);
+          } else {
+            const share = Math.max(1, Math.round((budget * weights[idx]) / weightSum));
+            node.plannedMinutes = share;
+            assignedSum += share;
+          }
+          node.isUntimedSubphase = false;
+        });
+      }
+
+      function distributeBlockTimesToUntimedSubphases(candidates) {
+        if (!Array.isArray(candidates) || candidates.length === 0) return;
+
+        // 1. Si un bloque contenedor con tiempo (ej. "Procesos de Aprendizaje (42 min)") precede a subfases sin tiempo
+        for (let i = 0; i < candidates.length; i++) {
+          const node = candidates[i];
+          if (node.plannedMinutes > 0 && (isSemanticContainerTitle(node.title) || node.isMomentCandidate)) {
+            const untimedChildren = [];
+            for (let j = i + 1; j < candidates.length; j++) {
+              if (candidates[j].moment !== node.moment) break;
+              if (candidates[j].plannedMinutes === 0 && candidates[j].isUntimedSubphase) {
+                untimedChildren.push(candidates[j]);
+              } else {
+                break;
+              }
+            }
+            if (untimedChildren.length >= 1) {
+              distributeMinutesLogically(untimedChildren, node.plannedMinutes);
+            }
+          }
+        }
+
+        // 2. Para cualquier subfase aún sin tiempo, distribuir el saldo disponible del Momento (INICIO, DESARROLLO, CIERRE)
+        const defaultMomentBudgets = { INICIO: 15, DESARROLLO: 60, CIERRE: 15 };
+        ['INICIO', 'DESARROLLO', 'CIERRE'].forEach((momentName) => {
+          const nodesInMoment = candidates.filter(c => c.moment === momentName && !c.isMomentCandidate);
+          if (nodesInMoment.length === 0) return;
+
+          const untimedInMoment = nodesInMoment.filter(c => c.plannedMinutes === 0);
+          if (untimedInMoment.length === 0) return;
+
+          const timedInMoment = nodesInMoment.filter(c => c.plannedMinutes > 0 && !isSemanticContainerTitle(c.title));
+          const timedSum = timedInMoment.reduce((acc, c) => acc + c.plannedMinutes, 0);
+          const declaredTotal = state.declaredMomentTotals[momentName] || defaultMomentBudgets[momentName] || 15;
+          const remainingBudget = Math.max(untimedInMoment.length * 2, declaredTotal - timedSum);
+
+          distributeMinutesLogically(untimedInMoment, remainingBudget);
+        });
+      }
+
+      /**
        * Garantiza que ninguna tarea repetida (por resúmenes finales o encabezados duplicados)
-       * vuelva a ser agregada a la secuencia lineal y asegura el orden monotónico INICIO -> DESARROLLO -> CIERRE.
+       * vuelva a ser agregada a la secuencia lineal, asegura el orden monotónico INICIO -> DESARROLLO -> CIERRE
+       * y evita que el tiempo total supere los 90 minutos reglamentarios si hubo bloques redundantes.
        */
       function deduplicateAndFinalizeAtomicSteps(steps) {
         const seenKeys = new Set();
@@ -1672,7 +1813,6 @@ Resumen Institucional Repetido - Inicio (15 min) / Desarrollo (60 min) / Cierre 
           if (step.moment === 'CIERRE') {
             reachedCierre = true;
           } else if (reachedCierre && (step.moment === 'INICIO' || step.moment === 'DESARROLLO')) {
-            // Bloquear cualquier intento de reabrir Inicio o Desarrollo tras el Cierre
             continue;
           }
 
@@ -1685,10 +1825,30 @@ Resumen Institucional Repetido - Inicio (15 min) / Desarrollo (60 min) / Cierre 
           step.id = result.length + 1;
           result.push(step);
 
-          // Si este paso en CIERRE es "Trabajo de extensión", cortar cualquier paso posterior
           if (step.moment === 'CIERRE' && /(?:TRABAJO|ACTIVIDAD|TAREA)\s+DE\s+EXTENSI[OÓ]N|\bEXTENSI[OÓ]N\b/i.test(step.title)) {
             break;
           }
+        }
+
+        // Si la suma total supera los 90 minutos reglamentarios (o la ventana oficial configurada) por bloques tabulares redundantes,
+        // reconciliar automáticamente los tiempos de forma proporcional para no inflar más allá de 90 min
+        const officialWindowSec = getOfficialWindowSeconds(state.plannedStartStr || '08:40', state.mandatoryEndStr || '10:10');
+        const maxReglamentaryMins = Math.round(officialWindowSec / 60) || 90;
+        const currentTotalMins = result.reduce((acc, s) => acc + s.plannedMinutes, 0);
+
+        if (result.length > 0 && currentTotalMins > maxReglamentaryMins + 0.5) {
+          const scale = maxReglamentaryMins / currentTotalMins;
+          let accMins = 0;
+          result.forEach((step, idx) => {
+            if (idx === result.length - 1) {
+              step.plannedMinutes = Math.max(1, Math.round((maxReglamentaryMins - accMins) * 10) / 10);
+            } else {
+              step.plannedMinutes = Math.max(1, Math.round(step.plannedMinutes * scale));
+              accMins += step.plannedMinutes;
+            }
+            step.plannedSeconds = Math.round(step.plannedMinutes * 60);
+            step.adjustedSeconds = step.plannedSeconds;
+          });
         }
 
         return result;
@@ -2145,14 +2305,22 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
           /[\(\[]\s*\d+(?:[.,]\d+)?\s*(?:min(?:utos?)?|mins?\.?|m\.?|'|’’)\s*[\)\]]/i.test(l)
         );
 
-        // Si el Momento no tenía tiempo en su propia celda y la celda de estrategias ya tiene sus propios tiempos inline,
-        // un único tiempo en la columna final representa el total del Momento (ej. INICIO | subfases... | 20 min)
+        const untimedSubphasesInCellCount = allContentLines.filter(l => parseUntimedSubphaseLine(l) !== null).length;
+
+        // Si el Momento no tenía tiempo en su propia celda y la columna final tiene un único tiempo que corresponde al bloque/Momento
         if (detectedMomentHeader) {
-          if (!/\(\d/.test(detectedMomentHeader) && parallelTimesList.length === 1 && (contentAlreadyHasInlineTimes || allContentLines.length === 0)) {
+          if (
+            !/\(\d/.test(detectedMomentHeader) &&
+            parallelTimesList.length === 1 &&
+            (contentAlreadyHasInlineTimes || allContentLines.length === 0 || untimedSubphasesInCellCount >= 2)
+          ) {
             linesOut.push(`${detectedMomentHeader} (${parallelTimesList[0]} min)`);
             parallelTimesList = [];
           } else {
             linesOut.push(detectedMomentHeader);
+            if (/\(\d/.test(detectedMomentHeader) && parallelTimesList.length === 1 && (contentAlreadyHasInlineTimes || untimedSubphasesInCellCount >= 2)) {
+              parallelTimesList = [];
+            }
           }
         }
 
@@ -2160,10 +2328,9 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
 
         // Caso 1: La columna de tiempo tiene múltiples tiempos en paralelo (ej. 5 subfases en Col 2 y 5 tiempos en Col 3)
         if (parallelTimesList.length > 1 && !contentAlreadyHasInlineTimes) {
-          // Identificar líneas de título de subfase dentro de allContentLines
           const candidateHeadingIndices = [];
           allContentLines.forEach((line, idx) => {
-            if (line.length <= 110 || /^[-*•+]\s+/.test(line) || /^[^:]{3,80}:\s+.+/.test(line)) {
+            if (parseUntimedSubphaseLine(line) || line.length <= 110 || /^[-*•+]\s+/.test(line) || /^[^:]{3,80}:\s+.+/.test(line)) {
               candidateHeadingIndices.push(idx);
             }
           });
@@ -2193,10 +2360,18 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
           return;
         }
 
-        // Caso 2: La fila representa una subfase (con 1 o varios párrafos descriptivos) y tiene 1 tiempo en su columna paralela
+        // Caso 2: La fila tiene 1 tiempo de bloque en la columna paralela
         if (parallelTimesList.length === 1 && !contentAlreadyHasInlineTimes) {
           const rowMins = parallelTimesList[0];
-          // Si había múltiples celdas de texto (ej. Col 1 = "Motivación", Col 2 = "El practicante presenta...")
+
+          // Si la celda contiene múltiples subfases sin tiempo individual, emitir contenedor de bloque para distribuir el tiempo lógicamente
+          if (untimedSubphasesInCellCount >= 2) {
+            linesOut.push(`Bloque de Secuencia (${rowMins} min)`);
+            allContentLines.forEach(line => linesOut.push(line));
+            return;
+          }
+
+          // Si había múltiples celdas de texto para una única subfase (ej. Col 1 = "Motivación", Col 2 = "El practicante presenta...")
           if (contentLineGroups.length >= 2 && contentLineGroups[0].length === 1 && contentLineGroups[0][0].length <= 85) {
             const subphaseTitle = contentLineGroups[0][0].replace(/[:\-–—]+$/, '').trim();
             const restLines = contentLineGroups.slice(1).flat();
@@ -2206,7 +2381,7 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
             return;
           }
 
-          // Si el título y la descripción están en la misma celda (1 o múltiples párrafos)
+          // Si el título y la descripción están en la misma celda (1 o múltiples párrafos de una misma subfase)
           const firstLine = allContentLines[0];
           const split = findTitleDescriptionSplit(firstLine);
           if (split.description) {
@@ -2218,7 +2393,7 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
           return;
         }
 
-        // Caso 3: Las líneas ya traen su tiempo inline o son líneas descriptivas normales
+        // Caso 3: Las líneas ya traen su tiempo inline o son subfases dentro de un Momento con tiempo por bloque
         allContentLines.forEach((line) => linesOut.push(line));
       }
 
