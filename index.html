@@ -135,7 +135,15 @@
           <span id="headerStatusLabel" class="text-slate-700 font-bold truncate">Configuración de Sesión</span>
         </div>
 
-        <div class="flex items-center gap-2 shrink-0 tabular-nums">
+        <div class="flex items-center gap-1.5 sm:gap-2 shrink-0 tabular-nums">
+          <button
+            type="button"
+            id="btnEditSessionConfig"
+            class="hidden px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition-colors"
+            title="Volver a la configuración de la sesión"
+          >
+            Config
+          </button>
           <span id="headerProgressPct" class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-mono font-bold text-[11px]">
             0% avance
           </span>
@@ -156,7 +164,7 @@
   </header>
 
   <!-- CONTENEDOR PRINCIPAL -->
-  <main class="flex-1 w-full max-w-3xl mx-auto pt-20 pb-28 px-3 sm:px-5 flex flex-col gap-5">
+  <main id="mainContainer" class="flex-1 w-full max-w-3xl mx-auto pt-20 pb-28 px-3 sm:px-5 flex flex-col gap-5">
 
     <!-- ========================================================= -->
     <!-- VISTA 1: CONFIGURACIÓN Y PARSER JERÁRQUICO DELIMITADO     -->
@@ -593,174 +601,108 @@
     </section>
 
     <!-- ========================================================= -->
-    <!-- VISTA 2: EJECUCIÓN DOCENTE EN AULA                        -->
+    <!-- VISTA 2: EJECUCIÓN DOCENTE EN AULA (PANTALLA MÓVIL SIN SCROLL) -->
     <!-- ========================================================= -->
-    <section id="liveView" class="hidden flex-col gap-4 py-1">
+    <section id="liveView" class="hidden w-full items-center justify-center">
 
-      <!-- BANDA DE SINCRONIZACIÓN HORARIA Y CRONÓMETRO GLOBAL -->
-      <div class="bg-white rounded-2xl shadow-md border border-slate-200/80 p-3.5 sm:p-4">
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center tabular-nums">
-          <div class="rounded-xl bg-slate-50 border border-slate-200/70 p-2.5">
-            <span class="block text-[10px] font-bold uppercase text-slate-500">Inicio Plan / Real</span>
-            <span id="liveStartComparison" class="font-mono text-xs sm:text-sm font-extrabold text-slate-800">10:30 / 10:35</span>
-          </div>
-          <div class="rounded-xl bg-slate-50 border border-slate-200/70 p-2.5">
-            <span class="block text-[10px] font-bold uppercase text-slate-500">Meta de Cierre</span>
-            <span id="liveMandatoryEnd" class="font-mono text-xs sm:text-sm font-extrabold text-slate-800">12:00</span>
-          </div>
-          <div class="rounded-xl bg-indigo-50/70 border border-indigo-200/70 p-2.5">
-            <span class="block text-[10px] font-bold uppercase text-indigo-600">Escala Matemática</span>
-            <span id="liveScaleFactor" class="font-mono text-xs sm:text-sm font-extrabold text-indigo-700">100.0%</span>
-          </div>
-          <div class="rounded-xl bg-slate-900 text-white p-2.5 shadow-sm">
-            <span class="block text-[10px] font-bold uppercase text-slate-300">Restante Global</span>
-            <span id="liveGlobalCountdown" class="font-mono text-sm sm:text-base font-extrabold text-emerald-400">01:30:00</span>
-          </div>
-        </div>
-        <p id="liveRecalcNotice" class="text-xs font-semibold text-slate-600 mt-2.5 pt-2 border-t border-slate-100">
-          Sincronización activa con la hora límite de cierre.
-        </p>
-      </div>
-
-      <!-- BANNER DE EXCESO DE TIEMPO EN LA SUBFASE ACTUAL -->
+      <!-- Contenedor principal adaptado para pantalla móvil sin scroll -->
       <div
-        id="overtimeBanner"
-        class="hidden rounded-2xl bg-rose-500 text-white px-4 py-3 shadow-md flex items-center justify-between gap-3"
-        role="alert"
-      >
-        <div class="text-xs sm:text-sm font-bold">
-          Tiempo de tarea agotado — Pulsa "Siguiente Paso" para reajustar las tareas restantes hacia la hora de cierre.
-        </div>
-        <span id="overtimeElapsedBadge" class="font-mono text-xs sm:text-sm font-extrabold px-2.5 py-1 rounded-xl bg-white text-rose-600 tabular-nums shrink-0">
-          +00:00
-        </span>
-      </div>
-
-      <!-- TARJETA CENTRAL GRANDE DE LA TAREA ATÓMICA ACTUAL -->
-      <article
         id="currentStepCard"
-        class="bg-white rounded-2xl shadow-lg border border-slate-200/90 p-5 sm:p-6 flex flex-col gap-5 transition-all step-card-animate"
+        class="flex flex-col justify-between h-[82vh] w-full max-w-md mx-auto p-4 bg-white rounded-2xl shadow-lg border border-slate-100 step-card-animate"
       >
-        <!-- Ruta jerárquica (Momento Macro -> Bloque Contenedor Padre -> Estado) -->
-        <div class="flex flex-wrap items-center justify-between gap-2 pb-3.5 border-b border-slate-100">
-          <div class="flex flex-wrap items-center gap-2">
+
+        <!-- 1. BLOQUE SUPERIOR: Título de la Fase / Subfase actual centrado -->
+        <div class="text-center pb-2 border-b border-slate-100">
+          <div class="flex items-center justify-between gap-2 mb-0.5">
             <span
               id="currentMomentBadge"
-              class="px-3 py-1 rounded-xl bg-indigo-600 text-white text-xs font-extrabold uppercase tracking-wider shadow-sm"
+              class="px-2 py-0.5 rounded-md bg-indigo-600 text-white text-[10px] font-bold uppercase tracking-wider"
             >
               INICIO
             </span>
-            <span
-              id="currentMacroGroupBadge"
-              class="hidden px-3 py-1 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold"
-            >
-              Procesos de Aprendizaje
+            <span id="currentStepStateBadge" class="text-xs font-semibold tracking-wider text-indigo-600 uppercase">
+              Fase Activa
             </span>
-            <span
-              id="currentStepStateBadge"
-              class="px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold"
-            >
-              En tiempo
+            <span id="currentStepIndexLabel" class="font-mono text-[11px] font-bold text-slate-400">
+              1/11
             </span>
           </div>
-          <span id="currentStepIndexLabel" class="font-mono text-xs sm:text-sm font-extrabold text-slate-500">
-            Tarea 1 de 12
-          </span>
+          <h2 id="current-title" class="text-xl font-bold text-slate-800 mt-1 leading-tight break-words">
+            Lineamientos Preliminares
+          </h2>
+          <p id="currentSubphaseSubtitle" class="text-[11px] font-medium text-slate-400 mt-0.5 truncate">
+            Saludo y acuerdos de convivencia
+          </p>
+          <span id="currentMacroGroupBadge" class="hidden"></span>
         </div>
 
-        <!-- Título, Subtítulo/Aclaración y Cronómetro Regresivo de la Subfase -->
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center pb-5 border-b border-slate-100">
-          <div class="md:col-span-7 flex flex-col gap-1.5">
-            <span class="text-xs font-bold uppercase tracking-wider text-indigo-600">
-              Subfase Atómica en Ejecución
+        <!-- 2. BLOQUE CENTRAL: Cronómetros (Principal y Comparativa de Tiempos) -->
+        <div id="currentTimerBox" class="flex flex-col items-center justify-center my-auto py-2">
+          <!-- Cronómetro Regresivo de la Subfase -->
+          <div id="subphase-timer" class="text-6xl font-black text-slate-900 tracking-tight tabular-nums transition-colors">
+            03:00
+          </div>
+          
+          <!-- Tiempos planificado vs ajustado en pequeño y con colores diferenciados -->
+          <div class="flex items-center gap-3 mt-2 text-xs font-medium">
+            <span class="text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+              Planificado: <strong id="planned-time" class="text-slate-700">3 min</strong>
             </span>
-            <h2
-              id="currentSubphaseTitle"
-              class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight break-words"
-            >
-              Lineamientos Preliminares
-            </h2>
-            <p
-              id="currentSubphaseSubtitle"
-              class="text-xs sm:text-sm font-semibold text-slate-500"
-            >
-              Secuencia de Inicio
-            </p>
-            <div class="mt-2 flex flex-wrap items-center gap-2 text-xs font-mono font-bold">
-              <span id="currentPlannedDurationLabel" class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">
-                Plan: 02:00 min
-              </span>
-              <span id="currentAdjustedDurationLabel" class="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200/60">
-                Ajustado: 02:00 min
-              </span>
-            </div>
+            <span class="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
+              Ajustado (IA): <strong id="adjusted-time" class="text-indigo-700">3 min</strong>
+            </span>
           </div>
 
-          <div
-            id="currentTimerBox"
-            class="md:col-span-5 rounded-2xl bg-slate-50 border border-slate-200/90 p-4 text-center shadow-inner transition-colors"
-          >
-            <span class="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Tiempo Restante de la Subfase
-            </span>
+          <!-- Progreso de la subfase y tiempo global restante hacia el cierre -->
+          <div class="w-48 h-1.5 bg-slate-100 rounded-full mt-2.5 overflow-hidden">
             <div
-              id="currentBlockCountdown"
-              class="font-mono text-5xl sm:text-6xl font-extrabold tracking-tight tabular-nums leading-none mt-1.5 text-emerald-600 transition-colors"
-            >
-              02:00
-            </div>
-            <div class="w-full h-2.5 bg-slate-200/80 rounded-full mt-3.5 overflow-hidden">
-              <div
-                id="currentBlockProgressBar"
-                class="h-full w-full rounded-full bg-emerald-500 transition-all duration-300"
-              ></div>
-            </div>
+              id="currentBlockProgressBar"
+              class="h-full w-full rounded-full bg-emerald-500 transition-all duration-300"
+            ></div>
           </div>
-        </div>
+          <div class="flex flex-wrap items-center justify-center gap-2 mt-1.5 text-[11px] font-mono text-slate-500">
+            <span>Global: <strong id="liveGlobalCountdown" class="text-slate-700">01:30:00</strong></span>
+            <span>•</span>
+            <span>Meta: <strong id="liveMandatoryEnd" class="text-slate-700">12:00</strong></span>
+            <span>•</span>
+            <span>Escala: <strong id="liveScaleFactor" class="text-indigo-600">100.0%</strong></span>
+          </div>
 
-        <!-- Instrucciones pedagógicas detalladas -->
-        <div class="bg-slate-50/80 rounded-2xl p-4 sm:p-5 border border-slate-200/70">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-xs font-extrabold uppercase tracking-wider text-indigo-700">
-              Instrucciones Pedagógicas Exactas
-            </h3>
-          </div>
+          <!-- Alerta compacta si se excede el tiempo de la subfase -->
           <div
-            id="currentStepDescription"
-            class="text-base sm:text-xl font-semibold leading-relaxed text-slate-800 whitespace-pre-line"
+            id="overtimeBanner"
+            class="hidden mt-1.5 px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[11px] font-bold items-center gap-1.5"
+            role="alert"
           >
-            Descripción detallada de la tarea actual...
+            <span>Tiempo agotado</span>
+            <span id="overtimeElapsedBadge" class="font-mono font-extrabold">+00:00</span>
           </div>
         </div>
 
-        <!-- Siguiente tarea atómica -->
-        <div class="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs sm:text-sm">
-          <div class="flex items-center gap-1.5 min-w-0">
-            <span class="font-bold text-slate-400 uppercase">Siguiente Tarea:</span>
-            <span id="nextStepPreviewTitle" class="font-extrabold text-slate-700 truncate">Motivación</span>
-          </div>
-          <span id="nextStepPreviewDuration" class="font-mono font-bold text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 shrink-0">
-            Ajustado: 04:00
-          </span>
+        <!-- 3. INSTRUCCIONES PEDAGÓGICAS EXACTAS (Área fija legible sin scroll) -->
+        <div class="bg-slate-50 border-l-4 border-indigo-500 p-3.5 rounded-r-xl my-2 overflow-y-auto max-h-36">
+          <span class="text-[11px] font-bold text-slate-400 uppercase block mb-1">Acción Pedagógica In Situ:</span>
+          <p id="subphase-instructions" class="text-sm text-slate-700 leading-relaxed font-normal whitespace-pre-line">
+            El practicante asiste con puntualidad, saluda y da la bienvenida a los educandos. Controla la asistencia y recuerda las normas de convivencia.
+          </p>
         </div>
-      </article>
 
-      <!-- SECUENCIA LINEAL COMPLETA EN EJECUCIÓN -->
-      <div class="bg-white rounded-2xl shadow-md border border-slate-200/80 p-4 sm:p-5">
-        <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
-          <h3 class="text-xs sm:text-sm font-extrabold text-slate-800 uppercase tracking-wider">
-            Secuencia Lineal de Tareas Atómicas
-          </h3>
-          <button
-            type="button"
-            id="btnEditSessionConfig"
-            class="text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-xl transition-colors"
-          >
-            Volver a Configuración
-          </button>
+        <!-- 4. BLOQUE INFERIOR: Nombre completo de la siguiente subfase o fase -->
+        <div class="pt-3 border-t border-slate-100 bg-slate-50/50 -mx-4 -mb-4 p-3 rounded-b-2xl">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-400 font-medium">Siguiente paso:</span>
+            <span id="next-title" class="font-semibold text-slate-600 truncate max-w-[220px]">
+              Motivación (4 min)
+            </span>
+          </div>
         </div>
-        <div id="liveStepsTimeline" class="flex flex-col gap-2">
-          <!-- Renderizado dinámico por JS -->
+
+        <!-- Nodos auxiliares ocultos de sincronización para mantener trazabilidad -->
+        <div class="hidden" aria-hidden="true">
+          <span id="liveStartComparison"></span>
+          <span id="liveRecalcNotice"></span>
+          <span id="nextStepPreviewDuration"></span>
+          <div id="liveStepsTimeline"></div>
         </div>
       </div>
     </section>
@@ -922,6 +864,7 @@ Resumen Institucional Repetido - Inicio (15 min) / Desarrollo (60 min) / Cierre 
         btnToggleAudio: document.getElementById('btnToggleAudio'),
         audioStateLabel: document.getElementById('audioStateLabel'),
 
+        mainContainer: document.getElementById('mainContainer'),
         setupView: document.getElementById('setupView'),
         liveView: document.getElementById('liveView'),
         thumbControlBar: document.getElementById('thumbControlBar'),
@@ -996,15 +939,15 @@ Resumen Institucional Repetido - Inicio (15 min) / Desarrollo (60 min) / Cierre 
         currentMacroGroupBadge: document.getElementById('currentMacroGroupBadge'),
         currentStepStateBadge: document.getElementById('currentStepStateBadge'),
         currentStepIndexLabel: document.getElementById('currentStepIndexLabel'),
-        currentSubphaseTitle: document.getElementById('currentSubphaseTitle'),
+        currentSubphaseTitle: document.getElementById('current-title'),
         currentSubphaseSubtitle: document.getElementById('currentSubphaseSubtitle'),
-        currentPlannedDurationLabel: document.getElementById('currentPlannedDurationLabel'),
-        currentAdjustedDurationLabel: document.getElementById('currentAdjustedDurationLabel'),
+        currentPlannedDurationLabel: document.getElementById('planned-time'),
+        currentAdjustedDurationLabel: document.getElementById('adjusted-time'),
         currentTimerBox: document.getElementById('currentTimerBox'),
-        currentBlockCountdown: document.getElementById('currentBlockCountdown'),
+        currentBlockCountdown: document.getElementById('subphase-timer'),
         currentBlockProgressBar: document.getElementById('currentBlockProgressBar'),
-        currentStepDescription: document.getElementById('currentStepDescription'),
-        nextStepPreviewTitle: document.getElementById('nextStepPreviewTitle'),
+        currentStepDescription: document.getElementById('subphase-instructions'),
+        nextStepPreviewTitle: document.getElementById('next-title'),
         nextStepPreviewDuration: document.getElementById('nextStepPreviewDuration'),
 
         liveStepsTimeline: document.getElementById('liveStepsTimeline'),
@@ -1361,8 +1304,15 @@ Resumen Institucional Repetido - Inicio (15 min) / Desarrollo (60 min) / Cierre 
         return { title: restStr.trim(), description: '' };
       }
 
+      function stripCitationArtifacts(str) {
+        return String(str || '')
+          .replace(/\[\s*cite(?:_start|_end)?(?:\s*:\s*[^\]]*)?\]/gi, '')
+          .replace(/\s{2,}/g, ' ')
+          .trim();
+      }
+
       function cleanMarkdownEmphasis(str) {
-        return String(str || '').replace(/\*\*/g, '').replace(/__/g, '').trim();
+        return stripCitationArtifacts(String(str || '').replace(/\*\*/g, '').replace(/__/g, ''));
       }
 
       function extractTitleAndClarifications(fullTitle) {
@@ -1390,7 +1340,8 @@ Resumen Institucional Repetido - Inicio (15 min) / Desarrollo (60 min) / Cierre 
        * Motor Principal de Parseo Jerárquico Estricto con Delimitación de "SECUENCIA DIDÁCTICA"
        */
       function parseStrictHierarchicalTree(rawInput) {
-        const trimmed = (rawInput || '').trim();
+        const cleanedInput = String(rawInput || '').replace(/\[\s*cite(?:_start|_end)?(?:\s*:\s*[^\]]*)?\]/gi, '');
+        const trimmed = cleanedInput.trim();
         state.discardedContainers = [];
         state.declaredMomentTotals = {};
         if (!trimmed) return [];
@@ -2240,6 +2191,8 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
             </p>
           </div>
         `).join('');
+
+        saveSessionStateToLocalStorage();
       }
 
       // -----------------------------------------------------------
@@ -2324,11 +2277,15 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
         dom.liveView.classList.remove('hidden');
         dom.liveView.classList.add('flex');
         dom.thumbControlBar.classList.remove('hidden');
+        dom.btnEditSessionConfig.classList.remove('hidden');
+        dom.mainContainer.className = 'flex-1 w-full max-w-3xl mx-auto pt-14 pb-16 px-3 flex items-center justify-center overflow-hidden';
 
         updateSyncHeaderInfo(now);
         renderCurrentStepWithTransition();
         renderLiveStepsTimeline();
         tickSessionClock();
+        saveSessionStateToLocalStorage();
+        requestWakeLockIfNeeded();
 
         if (state.timerIntervalId) clearInterval(state.timerIntervalId);
         state.timerIntervalId = setInterval(tickSessionClock, 250);
@@ -2422,12 +2379,13 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
 
         if (state.isPaused) {
           dom.headerStatusLabel.textContent = 'Sesión en Pausa';
-          dom.currentStepStateBadge.textContent = 'En pausa';
-          dom.currentStepStateBadge.className = 'px-2.5 py-1 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold';
+          dom.currentStepStateBadge.textContent = 'Fase en Pausa';
+          dom.currentStepStateBadge.className = 'text-xs font-semibold tracking-wider text-amber-600 uppercase';
           dom.statusIndicatorDot.classList.add('bg-amber-500');
           dom.globalProgressBar.classList.add('bg-amber-500');
           dom.currentBlockProgressBar.classList.add('bg-amber-500');
           dom.overtimeBanner.classList.add('hidden');
+          dom.overtimeBanner.classList.remove('flex');
           return;
         }
 
@@ -2436,34 +2394,34 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
           dom.currentBlockProgressBar.classList.add('bg-rose-500');
           dom.statusIndicatorDot.classList.add('bg-rose-500');
           dom.headerStatusLabel.textContent = 'Tiempo de subfase excedido';
-          dom.currentStepStateBadge.textContent = 'Tiempo excedido';
-          dom.currentStepStateBadge.className = 'px-2.5 py-1 rounded-xl bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold';
-          dom.currentBlockCountdown.className = 'font-mono text-5xl sm:text-6xl font-extrabold tracking-tight tabular-nums leading-none mt-1.5 text-rose-600 transition-colors';
-          dom.currentTimerBox.className = 'md:col-span-5 rounded-2xl bg-rose-50/70 border border-rose-200 p-4 text-center shadow-inner transition-colors';
+          dom.currentStepStateBadge.textContent = 'Tiempo Excedido';
+          dom.currentStepStateBadge.className = 'text-xs font-semibold tracking-wider text-rose-600 uppercase';
+          dom.currentBlockCountdown.className = 'text-6xl font-black text-rose-600 tracking-tight tabular-nums transition-colors';
           dom.currentStepCard.classList.add('card-overtime-coral');
 
           dom.overtimeBanner.classList.remove('hidden');
+          dom.overtimeBanner.classList.add('flex');
           dom.overtimeElapsedBadge.textContent = `+${formatSecondsMMSS(Math.abs(stepRemainingSec))}`;
         } else if (remainingRatio <= 0.25) {
           dom.globalProgressBar.classList.add('bg-amber-500');
           dom.currentBlockProgressBar.classList.add('bg-amber-500');
           dom.statusIndicatorDot.classList.add('bg-amber-500');
           dom.headerStatusLabel.textContent = 'Último 25% de la subfase';
-          dom.currentStepStateBadge.textContent = 'Último 25%';
-          dom.currentStepStateBadge.className = 'px-2.5 py-1 rounded-xl bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold';
-          dom.currentBlockCountdown.className = 'font-mono text-5xl sm:text-6xl font-extrabold tracking-tight tabular-nums leading-none mt-1.5 text-amber-600 transition-colors';
-          dom.currentTimerBox.className = 'md:col-span-5 rounded-2xl bg-amber-50/60 border border-amber-200 p-4 text-center shadow-inner transition-colors';
+          dom.currentStepStateBadge.textContent = 'Fase Activa • Último 25%';
+          dom.currentStepStateBadge.className = 'text-xs font-semibold tracking-wider text-amber-600 uppercase';
+          dom.currentBlockCountdown.className = 'text-6xl font-black text-amber-600 tracking-tight tabular-nums transition-colors';
           dom.overtimeBanner.classList.add('hidden');
+          dom.overtimeBanner.classList.remove('flex');
         } else {
           dom.globalProgressBar.classList.add('bg-emerald-500');
           dom.currentBlockProgressBar.classList.add('bg-emerald-500');
           dom.statusIndicatorDot.classList.add('bg-emerald-500');
           dom.headerStatusLabel.textContent = 'En tiempo programado';
-          dom.currentStepStateBadge.textContent = 'En tiempo';
-          dom.currentStepStateBadge.className = 'px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold';
-          dom.currentBlockCountdown.className = 'font-mono text-5xl sm:text-6xl font-extrabold tracking-tight tabular-nums leading-none mt-1.5 text-emerald-600 transition-colors';
-          dom.currentTimerBox.className = 'md:col-span-5 rounded-2xl bg-slate-50 border border-slate-200/90 p-4 text-center shadow-inner transition-colors';
+          dom.currentStepStateBadge.textContent = 'Fase Activa';
+          dom.currentStepStateBadge.className = 'text-xs font-semibold tracking-wider text-indigo-600 uppercase';
+          dom.currentBlockCountdown.className = 'text-6xl font-black text-slate-900 tracking-tight tabular-nums transition-colors';
           dom.overtimeBanner.classList.add('hidden');
+          dom.overtimeBanner.classList.remove('flex');
         }
       }
 
@@ -2480,29 +2438,30 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
         dom.currentStepCard.classList.add('step-card-animate');
 
         dom.currentMomentBadge.textContent = step.moment;
-        dom.currentMomentBadge.className = `px-3 py-1 rounded-xl ${getMomentBadgeStyle(step.moment)} text-xs font-extrabold uppercase tracking-wider shadow-sm`;
+        dom.currentMomentBadge.className = `px-2 py-0.5 rounded-md ${getMomentBadgeStyle(step.moment)} text-[10px] font-bold uppercase tracking-wider`;
 
         if (step.macroGroup) {
           dom.currentMacroGroupBadge.textContent = step.macroGroup;
-          dom.currentMacroGroupBadge.classList.remove('hidden');
-        } else {
-          dom.currentMacroGroupBadge.classList.add('hidden');
         }
 
-        dom.currentStepIndexLabel.textContent = `Tarea ${state.currentStepIndex + 1} de ${total}`;
+        dom.currentStepIndexLabel.textContent = `${state.currentStepIndex + 1}/${total}`;
         dom.currentSubphaseTitle.textContent = step.title;
         dom.currentSubphaseSubtitle.textContent = step.subtitle || `Tarea atómica de ${step.moment}`;
-        dom.currentPlannedDurationLabel.textContent = `Plan: ${formatSecondsMMSS(step.plannedSeconds)} min`;
-        dom.currentAdjustedDurationLabel.textContent = `Ajustado: ${formatSecondsMMSS(step.adjustedSeconds)} min`;
+
+        const plannedMinClean = Math.round(step.plannedMinutes * 10) / 10;
+        const adjustedMinClean = Math.max(0.5, Math.round((step.adjustedSeconds / 60) * 10) / 10);
+        dom.currentPlannedDurationLabel.textContent = `${plannedMinClean} min`;
+        dom.currentAdjustedDurationLabel.textContent = `${adjustedMinClean} min`;
         dom.currentStepDescription.textContent = step.description;
 
         const nextStep = state.parsedSteps[state.currentStepIndex + 1];
         if (nextStep) {
-          dom.nextStepPreviewTitle.textContent = `${nextStep.moment} — ${nextStep.title}`;
+          const nextMins = Math.max(0.5, Math.round((nextStep.adjustedSeconds / 60) * 10) / 10);
+          dom.nextStepPreviewTitle.textContent = `${nextStep.title} (${nextMins} min)`;
           dom.nextStepPreviewDuration.textContent = `Ajustado: ${formatSecondsMMSS(nextStep.adjustedSeconds)}`;
           dom.btnNextStep.textContent = 'Siguiente Paso';
         } else {
-          dom.nextStepPreviewTitle.textContent = 'Cierre definitivo de la sesión';
+          dom.nextStepPreviewTitle.textContent = `Cierre de sesión (${dom.liveMandatoryEnd.textContent})`;
           dom.nextStepPreviewDuration.textContent = `Meta: ${dom.liveMandatoryEnd.textContent}`;
           dom.btnNextStep.textContent = 'Finalizar Sesión';
         }
@@ -2595,6 +2554,7 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
         renderCurrentStepWithTransition();
         renderLiveStepsTimeline();
         tickSessionClock();
+        saveSessionStateToLocalStorage();
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
 
@@ -2617,6 +2577,7 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
           dom.btnPauseResume.className = 'col-span-4 min-h-[54px] rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-sm active:scale-[0.98] transition-all';
         }
         tickSessionClock();
+        saveSessionStateToLocalStorage();
       }
 
       function finishSessionSummary() {
@@ -2625,6 +2586,8 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
           clearInterval(state.timerIntervalId);
           state.timerIntervalId = null;
         }
+        releaseWakeLock();
+        saveSessionStateToLocalStorage();
         dom.globalProgressBar.style.width = '100%';
         dom.headerProgressPct.textContent = '100% avance';
         dom.headerStatusLabel.textContent = 'Sesión Concluida';
@@ -2649,9 +2612,12 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
           clearInterval(state.timerIntervalId);
           state.timerIntervalId = null;
         }
+        releaseWakeLock();
         dom.liveView.classList.add('hidden');
         dom.liveView.classList.remove('flex');
         dom.thumbControlBar.classList.add('hidden');
+        dom.btnEditSessionConfig.classList.add('hidden');
+        dom.mainContainer.className = 'flex-1 w-full max-w-3xl mx-auto pt-20 pb-28 px-3 sm:px-5 flex flex-col gap-5';
         dom.setupView.classList.remove('hidden');
 
         dom.globalProgressBar.style.width = '0%';
@@ -2663,7 +2629,169 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
         dom.btnPauseResume.className = 'col-span-4 min-h-[54px] rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-sm active:scale-[0.98] transition-all';
 
         refreshSetupPreview();
+        saveSessionStateToLocalStorage();
         window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      // -----------------------------------------------------------
+      // 14B. PERSISTENCIA ANTE REPOSO Y CIERRE DE PANTALLA
+      //      (LOCALSTORAGE + PAGE VISIBILITY API + WAKE LOCK)
+      // -----------------------------------------------------------
+      const STORAGE_STATE_KEY = 'aulaflow_persisted_session_v2';
+      let wakeLockSentinel = null;
+
+      async function requestWakeLockIfNeeded() {
+        if (!state.isRunning || state.isPaused) return;
+        try {
+          if ('wakeLock' in navigator && navigator.wakeLock && !wakeLockSentinel) {
+            wakeLockSentinel = await navigator.wakeLock.request('screen');
+            wakeLockSentinel.addEventListener('release', () => {
+              wakeLockSentinel = null;
+            });
+          }
+        } catch (_) {}
+      }
+
+      function releaseWakeLock() {
+        try {
+          if (wakeLockSentinel) {
+            wakeLockSentinel.release().catch(() => {});
+            wakeLockSentinel = null;
+          }
+        } catch (_) {}
+      }
+
+      function saveSessionStateToLocalStorage() {
+        try {
+          const payload = {
+            rawSessionText: dom.sessionRawTextarea ? dom.sessionRawTextarea.value : DEFAULT_SESSION_TEXT,
+            plannedStartStr: dom.plannedStartInput ? dom.plannedStartInput.value : state.plannedStartStr,
+            mandatoryEndStr: dom.mandatoryEndInput ? dom.mandatoryEndInput.value : state.mandatoryEndStr,
+            parsedSteps: state.parsedSteps,
+            discardedContainers: state.discardedContainers,
+            declaredMomentTotals: state.declaredMomentTotals,
+            scopeAudit: state.scopeAudit,
+            isRunning: state.isRunning,
+            isPaused: state.isPaused,
+            currentStepIndex: state.currentStepIndex,
+            realStartTimeMs: state.realStartTimeMs,
+            mandatoryEndTimeMs: state.mandatoryEndTimeMs,
+            stepStartTimeMs: state.stepStartTimeMs,
+            pausedAccumulatedMs: state.pausedAccumulatedMs,
+            pauseStartedAtMs: state.pauseStartedAtMs,
+            initialScaleFactor: state.initialScaleFactor,
+            currentScaleFactor: state.currentScaleFactor,
+            initialDelaySeconds: state.initialDelaySeconds,
+            audioEnabled: state.audioEnabled,
+            overtimeAlertFiredForStep: state.overtimeAlertFiredForStep,
+            savedAtMs: Date.now()
+          };
+          localStorage.setItem(STORAGE_STATE_KEY, JSON.stringify(payload));
+        } catch (_) {}
+      }
+
+      function restoreSessionStateFromLocalStorage() {
+        try {
+          const rawSaved = localStorage.getItem(STORAGE_STATE_KEY);
+          if (!rawSaved) return false;
+          const saved = JSON.parse(rawSaved);
+          if (!saved || typeof saved !== 'object') return false;
+
+          if (typeof saved.rawSessionText === 'string' && saved.rawSessionText.trim().length > 0) {
+            dom.sessionRawTextarea.value = saved.rawSessionText;
+          }
+          if (saved.plannedStartStr) {
+            state.plannedStartStr = saved.plannedStartStr;
+            dom.plannedStartInput.value = saved.plannedStartStr;
+          }
+          if (saved.mandatoryEndStr) {
+            state.mandatoryEndStr = saved.mandatoryEndStr;
+            dom.mandatoryEndInput.value = saved.mandatoryEndStr;
+          }
+          if (typeof saved.audioEnabled === 'boolean') {
+            state.audioEnabled = saved.audioEnabled;
+            dom.audioStateLabel.textContent = state.audioEnabled ? 'Audio ON' : 'Audio OFF';
+            dom.btnToggleAudio.className = state.audioEnabled
+              ? 'px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-[11px] transition-colors flex items-center gap-1'
+              : 'px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 font-bold text-[11px] transition-colors flex items-center gap-1';
+          }
+
+          refreshSetupPreview();
+
+          // Si la sesión estaba activa cuando se bloqueó la pantalla o se cerró/recargó la pestaña, restaurar en vivo
+          if (
+            saved.isRunning &&
+            Array.isArray(saved.parsedSteps) &&
+            saved.parsedSteps.length > 0 &&
+            saved.stepStartTimeMs &&
+            saved.mandatoryEndTimeMs
+          ) {
+            state.parsedSteps = saved.parsedSteps;
+            state.discardedContainers = Array.isArray(saved.discardedContainers) ? saved.discardedContainers : state.discardedContainers;
+            state.declaredMomentTotals = saved.declaredMomentTotals || state.declaredMomentTotals;
+            state.scopeAudit = saved.scopeAudit || state.scopeAudit;
+            state.isRunning = true;
+            state.isPaused = Boolean(saved.isPaused);
+            state.currentStepIndex = Math.min(
+              Math.max(0, Number(saved.currentStepIndex) || 0),
+              state.parsedSteps.length - 1
+            );
+            state.realStartTimeMs = Number(saved.realStartTimeMs) || Date.now();
+            state.mandatoryEndTimeMs = Number(saved.mandatoryEndTimeMs);
+            state.stepStartTimeMs = Number(saved.stepStartTimeMs);
+            state.pausedAccumulatedMs = Number(saved.pausedAccumulatedMs) || 0;
+            state.pauseStartedAtMs = saved.pauseStartedAtMs ? Number(saved.pauseStartedAtMs) : null;
+            state.initialScaleFactor = Number(saved.initialScaleFactor) || 1.0;
+            state.currentScaleFactor = Number(saved.currentScaleFactor) || 1.0;
+            state.initialDelaySeconds = Number(saved.initialDelaySeconds) || 0;
+            state.overtimeAlertFiredForStep = Boolean(saved.overtimeAlertFiredForStep);
+
+            dom.setupView.classList.add('hidden');
+            dom.liveView.classList.remove('hidden');
+            dom.liveView.classList.add('flex');
+            dom.thumbControlBar.classList.remove('hidden');
+            dom.btnEditSessionConfig.classList.remove('hidden');
+            dom.mainContainer.className = 'flex-1 w-full max-w-3xl mx-auto pt-14 pb-16 px-3 flex items-center justify-center overflow-hidden';
+
+            if (state.isPaused) {
+              dom.btnPauseResume.textContent = 'Reanudar';
+              dom.btnPauseResume.className = 'col-span-4 min-h-[54px] rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-sm active:scale-[0.98] transition-all';
+            } else {
+              dom.btnPauseResume.textContent = 'Pausar';
+              dom.btnPauseResume.className = 'col-span-4 min-h-[54px] rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-sm active:scale-[0.98] transition-all';
+            }
+
+            updateSyncHeaderInfo(new Date(state.realStartTimeMs));
+            renderCurrentStepWithTransition();
+            renderLiveStepsTimeline();
+            tickSessionClock();
+
+            if (state.timerIntervalId) clearInterval(state.timerIntervalId);
+            state.timerIntervalId = setInterval(tickSessionClock, 250);
+            requestWakeLockIfNeeded();
+            return true;
+          }
+
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
+
+      function handleVisibilityWakeup() {
+        if (document.visibilityState === 'hidden') {
+          saveSessionStateToLocalStorage();
+          return;
+        }
+        // Al despertar la pantalla del celular, calcular inmediatamente el tiempo real transcurrido en segundo plano
+        if (state.isRunning) {
+          tickSessionClock();
+          if (!state.timerIntervalId) {
+            state.timerIntervalId = setInterval(tickSessionClock, 250);
+          }
+          requestWakeLockIfNeeded();
+          saveSessionStateToLocalStorage();
+        }
       }
 
       // -----------------------------------------------------------
@@ -2901,11 +3029,20 @@ Devuelve ÚNICAMENTE un JSON válido con la propiedad "tareasAtomicas" (array):
           closeModal();
           if (typeof cb === 'function') cb();
         });
+
+        // Persistencia automática ante bloqueo de pantalla, cambio de app o recarga (Page Visibility API)
+        document.addEventListener('visibilitychange', handleVisibilityWakeup);
+        window.addEventListener('pageshow', handleVisibilityWakeup);
+        window.addEventListener('focus', handleVisibilityWakeup);
+        window.addEventListener('pagehide', saveSessionStateToLocalStorage);
+        window.addEventListener('beforeunload', saveSessionStateToLocalStorage);
       }
 
       dom.sessionRawTextarea.value = DEFAULT_SESSION_TEXT;
       initEvents();
-      refreshSetupPreview();
+      if (!restoreSessionStateFromLocalStorage()) {
+        refreshSetupPreview();
+      }
     })();
   </script>
 </body>
